@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Grades & Streams{% endblock %}
+{% block content %}
+<h1>Grades &amp; Streams</h1>
+<p class="section-note">Form 1 has been removed. Form 2 has been replaced by Grade 10 under the Kenyan CBC / CBE Senior School structure.</p>
+
+<div class="grid-2" style="margin-top:18px;">
+  <div class="card">
+    <h3>Grades / Forms</h3>
+    <div class="pill-list">
+      {% for g in grades %}
+        <a class="pill {{ 'active' if g.id == selected_id else '' }}" href="{{ url_for('grades_page', grade_id=g.id) }}">
+          <span>{{ g.name }}</span>
+          <span class="tag">{{ g.curriculum }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Streams {% if selected_grade %}for {{ selected_grade.name }}{% endif %}</h3>
+    <table>
+      <thead><tr><th>Stream Name</th><th>Pathway</th><th></th></tr></thead>
+      <tbody>
+        {% for s in streams %}
+        <tr>
+          <td>{{ s.name }}</td>
+          <td>{{ s.pathway_name or '—' }}</td>
+          <td>
+            <form class="inline-form" method="post" action="{{ url_for('delete_stream', stream_id=s.id) }}"
+                  onsubmit="return confirm('Delete this stream and all its timetable entries?');">
+              <input type="hidden" name="grade_id" value="{{ selected_id }}">
+              <button type="submit" class="danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="section-note">No streams yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <form method="post" action="{{ url_for('add_stream') }}" class="form-row">
+      <input type="hidden" name="grade_id" value="{{ selected_id }}">
+      <div>
+        <label>Stream name</label>
+        <input type="text" name="name" placeholder="e.g. Grade 10 East" required>
+      </div>
+      {% if selected_grade and selected_grade.curriculum == 'CBC' %}
+      <div>
+        <label>Pathway</label>
+        <select name="pathway">
+          <option value="(none)">(none)</option>
+          {% for p in pathways %}
+            <option value="{{ p.name }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <div style="flex:0;">
+        <button type="submit">Add Stream</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

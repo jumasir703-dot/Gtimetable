@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Timetable Builder{% endblock %}
+{% block content %}
+<h1>Timetable Builder</h1>
+
+<div class="card">
+  <form method="get" class="form-row" style="margin-top:0;">
+    <div>
+      <label>Stream</label>
+      <select name="stream_id" onchange="this.form.submit()">
+        {% for s in streams %}
+          <option value="{{ s.id }}" {{ 'selected' if s.id == stream_id }}>{{ s.name }} [{{ s.grade_name }}]</option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+
+  {% if not streams %}
+    <p class="section-note">Create a stream first on the "Grades &amp; Streams" tab.</p>
+  {% else %}
+  <div class="tt-grid" id="tt-grid">
+    <div class="tt-head"></div>
+    {% for day in days %}
+      <div class="tt-head">{{ day }}</div>
+    {% endfor %}
+
+    {% for p in periods %}
+      <div class="tt-period">P{{ p.period_number }}<br>{{ p.start_time }}–{{ p.end_time }}</div>
+      {% for day in days %}
+        {% set entry = entries.get((day, p.period_number)) %}
+        <div class="tt-cell {{ 'filled' if entry }}"
+             data-day="{{ day }}" data-period="{{ p.period_number }}"
+             onclick="openCell('{{ day }}', {{ p.period_number }})">
+          {% if entry %}
+            <span class="subj">{{ entry.subject_name }}</span>
+            <span class="meta">{{ entry.teacher_name or '—' }}</span>
+            <span class="meta">{{ entry.room_name or '—' }}</span>
+          {% else %}
+            <span class="empty-label">+ add</span>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal">
+    <h3 id="modal-title">Edit slot</h3>
+    <div class="field">
+      <label>Subject</label>
+      <select id="modal-subject"></select>
+    </div>
+    <div class="field">
+      <label>Teacher</label>
+      <select id="modal-teacher"></select>
+    </div>
+    <div class="field">
+      <label>Room</label>
+      <select id="modal-room"></select>
+    </div>
+    <div id="conflict-area"></div>
+    <div class="actions">
+      <button onclick="saveCell(false)">Save</button>
+      <button class="secondary" onclick="clearCell()">Clear Slot</button>
+      <button class="secondary" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STREAM_ID = {{ stream_id or 'null' }};
+let currentDay = null, currentPeriod = null, currentPeriodId = null;
+
+function openCell(day, period){
+  currentDay = day; currentPeriod = period;
+  fetch(`/api/cell?stream_id=${STREAM_ID}&day=${encodeURIComponent(day)}&period_number=${period}`)
+    .then(r => r.json())
+    .then(data => {
+      currentPeriodId = data.period_id;
+      document.getElementById('modal-title').textContent = data.period_label;
+
+      const subjSel = document.getElementById('modal-subject');
+      subjSel.innerHTML = data.subjects.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+
+      const teachSel = document.getElementById('modal-teacher');
+      teachSel.innerHTML = '<option value="">(none)</option>' +
+        data.teachers.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+
+      const roomSel = document.getElementById('modal-room');
+      roomSel.innerHTML = '<option value="">(none)</option>' +
+        data.rooms.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+
+      if (data.existing){
+        subjSel.value = data.existing.subject_id;
+        teachSel.value = data.existing.teacher_id || '';
+        roomSel.value = data.existing.room_id || '';
+      }
+
+      document.getElementById('conflict-area').innerHTML = '';
+      document.getElementById('modal-backdrop').classList.add('open');
+    });
+}
+
+function closeModal(){
+  document.getElementById('modal-backdrop').classList.remove('open');
+}
+
+function saveCell(force){
+  const payload = {
+    stream_id: STREAM_ID,
+    period_id: currentPeriodId,
+    subject_id: document.getElementById('modal-subject').value,
+    teacher_id: document.getElementById('modal-teacher').value || null,
+    room_id: document.getElementById('modal-room').value || null,
+    force: force,
+  };
+  fetch('/api/cell/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.conflicts){
+      document.getElementById('conflict-area').innerHTML =
+        `<div class="conflict-box">${data.conflicts.join('<br>')}<br><br>
+         <button onclick="saveCell(true)">Save anyway</button></div>`;
+      return;
+    }
+    if (data.error){
+      alert(data.error);
+      return;
+    }
+    closeModal();
+    location.reload();
+  });
+}
+
+function clearCell(){
+  fetch('/api/cell/clear', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({stream_id: STREAM_ID, period_id: currentPeriodId}),
+  })
+  .then(r => r.json())
+  .then(() => { closeModal(); location.reload(); });
+}
+</script>
+{% endblock %}

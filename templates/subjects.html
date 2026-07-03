@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Subjects{% endblock %}
+{% block content %}
+<h1>Subjects</h1>
+
+<div class="card">
+  <form method="get" class="form-row" style="margin-top:0;">
+    <div>
+      <label>Filter by grade</label>
+      <select name="grade" onchange="this.form.submit()">
+        <option value="(all)" {{ 'selected' if grade_filter=='(all)' }}>(all)</option>
+        {% for g in grades %}
+          <option value="{{ g.name }}" {{ 'selected' if grade_filter==g.name }}>{{ g.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+
+  <table style="margin-top:14px;">
+    <thead><tr><th>Name</th><th>Category</th><th>Grade</th><th>Pathway</th><th></th></tr></thead>
+    <tbody>
+      {% for s in subjects %}
+      <tr>
+        <td>{{ s.name }}</td>
+        <td>{{ s.category }}</td>
+        <td>{{ s.grade_name }}</td>
+        <td>{{ s.pathway_name or '—' }}</td>
+        <td>
+          <form class="inline-form" method="post" action="{{ url_for('delete_subject', subject_id=s.id) }}"
+                onsubmit="return confirm('Delete this subject?');">
+            <input type="hidden" name="grade_filter" value="{{ grade_filter }}">
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="section-note">No subjects for this filter.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Add a subject</h3>
+  <form method="post" action="{{ url_for('add_subject') }}">
+    <div class="form-row">
+      <div>
+        <label>Subject name</label>
+        <input type="text" name="name" required>
+      </div>
+      <div>
+        <label>Grade</label>
+        <select name="grade" id="grade-select" required>
+          {% for g in grades %}
+            <option value="{{ g.name }}" data-curriculum="{{ g.curriculum }}">{{ g.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Category</label>
+        <select name="category">
+          <option value="core">core</option>
+          <option value="pathway">pathway</option>
+          <option value="general" selected>general</option>
+        </select>
+      </div>
+      <div id="pathway-field">
+        <label>Pathway (CBC only)</label>
+        <select name="pathway">
+          <option value="(none)">(none)</option>
+          {% for p in pathways %}
+            <option value="{{ p.name }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="flex:0;">
+        <button type="submit">Add Subject</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+  // Hide the pathway field when the selected grade isn't CBC-based.
+  const gradeSelect = document.getElementById('grade-select');
+  const pathwayField = document.getElementById('pathway-field');
+  function syncPathwayVisibility(){
+    const opt = gradeSelect.options[gradeSelect.selectedIndex];
+    pathwayField.style.display = (opt && opt.dataset.curriculum === 'CBC') ? '' : 'none';
+  }
+  gradeSelect.addEventListener('change', syncPathwayVisibility);
+  syncPathwayVisibility();
+</script>
+{% endblock %}

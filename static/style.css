@@ -1,0 +1,186 @@
+/* ---------------------------------------------------------------
+   Senior School Timetable — design tokens
+   Palette rooted in a Kenyan senior-school register: deep bottle
+   green (chalkboard / school uniform), warm sisal gold accent,
+   soft parchment background. Deliberately not the default
+   cream+terracotta or navy+bootstrap-blue look.
+------------------------------------------------------------------ */
+:root{
+  --ink:        #1b2b22;
+  --green-900:  #103524;
+  --green-700:  #1d5c3f;
+  --green-500:  #2f7d57;
+  --gold-500:   #c8932b;
+  --gold-100:   #f4e6c6;
+  --parchment:  #f6f2e9;
+  --paper:      #fffdf8;
+  --line:       #e3dcc9;
+  --muted:      #6f6a5b;
+  --danger:     #a3372c;
+  --danger-bg:  #fbe9e6;
+  --success-bg: #e7f2ea;
+  --success-fg: #1d5c3f;
+  --radius:     10px;
+  --shadow:     0 1px 2px rgba(16,53,36,0.06), 0 4px 14px rgba(16,53,36,0.06);
+  font-size: 16px;
+}
+
+*{ box-sizing: border-box; }
+
+body{
+  margin:0;
+  background: var(--parchment);
+  color: var(--ink);
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.45;
+}
+
+h1,h2,h3{
+  font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  color: var(--green-900);
+  margin: 0 0 .5rem 0;
+  letter-spacing: .2px;
+}
+
+.shell{ max-width: 1200px; margin: 0 auto; padding: 0 20px 60px; }
+
+/* ---- Top bar ---- */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  flex-wrap: wrap; gap: 14px;
+  padding: 22px 0 14px;
+  border-bottom: 2px solid var(--green-900);
+  margin-bottom: 22px;
+}
+.brand{ display:flex; align-items:center; gap: 12px; }
+.brand-mark{
+  display:inline-flex; align-items:center; justify-content:center;
+  width: 42px; height: 42px; border-radius: 8px;
+  background: var(--green-900); color: var(--gold-100);
+  font-family: Georgia, serif; font-weight: 700; font-size: 1.05rem;
+}
+.brand-text strong{ display:block; font-size: 1.05rem; color: var(--green-900); }
+.brand-text span{ font-size: .8rem; color: var(--muted); }
+
+.tabs{ display:flex; flex-wrap: wrap; gap: 4px; }
+.tabs a{
+  text-decoration:none; color: var(--green-900);
+  padding: 8px 14px; border-radius: 999px; font-size: .92rem;
+  border: 1px solid transparent;
+}
+.tabs a:hover{ background: var(--gold-100); }
+.tabs a.active{
+  background: var(--green-900); color: var(--paper); font-weight: 600;
+}
+
+/* ---- Flash messages ---- */
+.flash-wrap{ margin-bottom: 16px; display:flex; flex-direction: column; gap: 8px; }
+.flash{ padding: 10px 14px; border-radius: var(--radius); font-size: .9rem; }
+.flash-error{ background: var(--danger-bg); color: var(--danger); border: 1px solid #e3b7ae; }
+.flash-success{ background: var(--success-bg); color: var(--success-fg); border: 1px solid #b9d9c4; }
+
+/* ---- Layout helpers ---- */
+.grid-2{ display:grid; grid-template-columns: 320px 1fr; gap: 24px; align-items: start; }
+.card{
+  background: var(--paper); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow);
+}
+.card + .card{ margin-top: 18px; }
+.section-note{ color: var(--muted); font-size: .86rem; margin: 6px 0 0; }
+
+/* ---- Tables / lists ---- */
+table{ width:100%; border-collapse: collapse; font-size: .92rem; }
+th, td{ text-align:left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+th{ color: var(--green-900); font-weight: 600; background: var(--gold-100); }
+tr:hover td{ background: #fbf8f0; }
+
+/* ---- Forms ---- */
+label{ display:block; font-size: .82rem; color: var(--muted); margin-bottom: 4px; }
+input[type=text], input[type=email], input[type=number], select{
+  width: 100%; padding: 8px 10px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--paper);
+  font-size: .92rem; color: var(--ink);
+}
+input:focus, select:focus{ outline: 2px solid var(--green-500); outline-offset: 1px; }
+.form-row{ display:flex; gap: 12px; flex-wrap: wrap; align-items: end; margin-top: 12px; }
+.form-row > div{ min-width: 160px; flex: 1; }
+
+button, .btn{
+  display:inline-flex; align-items:center; gap: 6px;
+  background: var(--green-700); color: var(--paper); border: none;
+  padding: 9px 16px; border-radius: 7px; font-size: .88rem;
+  cursor: pointer; text-decoration:none; font-weight: 600;
+}
+button:hover, .btn:hover{ background: var(--green-900); }
+button.secondary, .btn.secondary{ background: transparent; color: var(--green-900); border: 1px solid var(--green-700); }
+button.secondary:hover{ background: var(--gold-100); }
+button.danger{ background: var(--danger); }
+button.danger:hover{ background: #832a21; }
+.inline-form{ display:inline; }
+
+/* ---- Chips / pills for grade list ---- */
+.pill-list{ display:flex; flex-direction: column; gap: 6px; }
+.pill{
+  display:flex; justify-content: space-between; align-items:center;
+  padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line);
+  text-decoration:none; color: var(--ink); background: var(--paper);
+}
+.pill:hover{ border-color: var(--green-500); }
+.pill.active{ background: var(--green-900); color: var(--paper); border-color: var(--green-900); }
+.pill .tag{ font-size: .72rem; padding: 2px 8px; border-radius: 999px; background: var(--gold-100); color: var(--green-900); }
+.pill.active .tag{ background: var(--gold-500); color: var(--green-900); }
+
+/* ---- Timetable grid ---- */
+.tt-grid{
+  display:grid;
+  grid-template-columns: 130px repeat(5, 1fr);
+  gap: 4px;
+  margin-top: 16px;
+}
+.tt-head, .tt-period{
+  background: var(--gold-100); color: var(--green-900);
+  font-weight: 600; font-size: .82rem;
+  display:flex; align-items:center; justify-content:center;
+  padding: 8px; border-radius: 6px; text-align:center;
+}
+.tt-cell{
+  background: var(--paper); border: 1px solid var(--line);
+  border-radius: 6px; padding: 8px; min-height: 66px;
+  cursor: pointer; font-size: .78rem; text-align: left;
+  display:flex; flex-direction:column; justify-content:center; gap: 2px;
+  transition: box-shadow .12s ease, border-color .12s ease;
+}
+.tt-cell:hover{ border-color: var(--green-500); box-shadow: var(--shadow); }
+.tt-cell.filled{ background: var(--success-bg); border-color: #b9d9c4; }
+.tt-cell .subj{ font-weight: 700; color: var(--green-900); }
+.tt-cell .meta{ color: var(--muted); }
+.tt-cell .empty-label{ color: #b5ad96; font-style: italic; }
+
+/* ---- Modal ---- */
+.modal-backdrop{
+  position: fixed; inset:0; background: rgba(16,53,36,0.45);
+  display:none; align-items:center; justify-content:center; z-index: 50;
+}
+.modal-backdrop.open{ display:flex; }
+.modal{
+  background: var(--paper); border-radius: var(--radius); padding: 22px;
+  width: 360px; max-width: 92vw; box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+}
+.modal h3{ margin-bottom: 12px; font-size: 1.05rem; }
+.modal .field{ margin-bottom: 12px; }
+.modal .actions{ display:flex; gap: 8px; margin-top: 16px; }
+.conflict-box{
+  background: var(--danger-bg); color: var(--danger); border: 1px solid #e3b7ae;
+  border-radius: 7px; padding: 10px; font-size: .82rem; margin-top: 10px;
+}
+
+pre.tt-export{
+  background: var(--green-900); color: var(--gold-100); padding: 16px;
+  border-radius: var(--radius); overflow-x:auto; font-size: .82rem;
+  line-height: 1.6;
+}
+
+@media (max-width: 900px){
+  .grid-2{ grid-template-columns: 1fr; }
+  .tt-grid{ grid-template-columns: 90px repeat(5, minmax(110px,1fr)); overflow-x:auto; }
+}
