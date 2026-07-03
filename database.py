@@ -31,6 +31,7 @@ backups, and is capped at 1GB. See README.md for what that means for you.
 """
 
 import os
+import re
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 USE_POSTGRES = bool(DATABASE_URL)
@@ -75,14 +76,36 @@ def _adapt(query):
     return query
 
 
+# Tables that use a composite primary key instead of an auto-incrementing
+# 'id' column. INSERTs into these must never get 'RETURNING id' appended
+# under Postgres, since that column doesn't exist there.
+TABLES_WITHOUT_ID = {"teacher_subjects"}
+
+_INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+([a-zA-Z_][a-zA-Z0-9_]*)", re.IGNORECASE)
+
+
+def _insert_table_name(query):
+    """Extract the target table name from an INSERT query, or None."""
+    m = _INSERT_TABLE_RE.match(query)
+    return m.group(1).lower() if m else None
+
+
+def _wants_returning_id(query):
+    """Whether it's safe/appropriate to append RETURNING id to this INSERT."""
+    table = _insert_table_name(query)
+    return table is not None and table not in TABLES_WITHOUT_ID
+
+
 def _insert_and_get_id(cur, query, params=()):
     """Run an INSERT and return the new row's id, for either backend."""
     query = _adapt(query)
     if USE_POSTGRES:
-        if "RETURNING" not in query.upper():
+        if "RETURNING" not in query.upper() and _wants_returning_id(query):
             query = query.rstrip().rstrip(";") + " RETURNING id"
         cur.execute(query, params)
-        return cur.fetchone()["id"]
+        if "RETURNING" in query.upper():
+            return cur.fetchone()["id"]
+        return None
     else:
         cur.execute(query, params)
         return cur.lastrowid
@@ -379,7 +402,12 @@ def execute(query, params=()):
     conn = get_connection()
     cur = conn.cursor()
     q = _adapt(query)
-    if USE_POSTGRES and q.strip().upper().startswith("INSERT") and "RETURNING" not in q.upper():
+    if (
+        USE_POSTGRES
+        and q.strip().upper().startswith("INSERT")
+        and "RETURNING" not in q.upper()
+        and _wants_returning_id(q)
+    ):
         q = q.rstrip().rstrip(";") + " RETURNING id"
         cur.execute(q, params)
         row = cur.fetchone()
