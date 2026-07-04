@@ -79,7 +79,7 @@ def _adapt(query):
 # Tables that use a composite primary key instead of an auto-incrementing
 # 'id' column. INSERTs into these must never get 'RETURNING id' appended
 # under Postgres, since that column doesn't exist there.
-TABLES_WITHOUT_ID = {"teacher_subjects"}
+TABLES_WITHOUT_ID = {"teacher_subjects", "generation_settings"}
 
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+([a-zA-Z_][a-zA-Z0-9_]*)", re.IGNORECASE)
 
@@ -142,6 +142,7 @@ CREATE TABLE IF NOT EXISTS subjects (
     category TEXT NOT NULL,
     grade_id INTEGER REFERENCES grades(id) ON DELETE CASCADE,
     pathway_id INTEGER REFERENCES pathways(id) ON DELETE SET NULL,
+    periods_per_week INTEGER DEFAULT 5,
     UNIQUE(name, grade_id, pathway_id)
 );
 
@@ -182,6 +183,11 @@ CREATE TABLE IF NOT EXISTS timetable_entries (
     room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL,
     period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
     UNIQUE(stream_id, period_id)
+);
+
+CREATE TABLE IF NOT EXISTS generation_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
 );
 """
 
@@ -212,6 +218,7 @@ CREATE TABLE IF NOT EXISTS subjects (
     category TEXT NOT NULL,
     grade_id INTEGER REFERENCES grades(id) ON DELETE CASCADE,
     pathway_id INTEGER REFERENCES pathways(id) ON DELETE SET NULL,
+    periods_per_week INTEGER DEFAULT 5,
     UNIQUE(name, grade_id, pathway_id)
 );
 
@@ -253,6 +260,11 @@ CREATE TABLE IF NOT EXISTS timetable_entries (
     period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
     UNIQUE(stream_id, period_id)
 );
+
+CREATE TABLE IF NOT EXISTS generation_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
 """
 
 
@@ -269,6 +281,7 @@ def init_db():
         first_run = row["reg"] is None
         cur.execute(SCHEMA_POSTGRES)
         conn.commit()
+        _migrate_schema(conn)
         if first_run:
             seed_data(conn)
         conn.close()
@@ -278,9 +291,25 @@ def init_db():
         conn = get_connection()
         conn.executescript(SCHEMA_SQLITE)
         conn.commit()
+        _migrate_schema(conn)
         if first_run:
             seed_data(conn)
         conn.close()
+
+
+def _migrate_schema(conn):
+    """Apply small additive schema changes to databases that already existed
+    before this column/table was introduced. Safe to run on every startup:
+    each change is only applied if it isn't already present."""
+    cur = conn.cursor()
+    if USE_POSTGRES:
+        cur.execute("ALTER TABLE subjects ADD COLUMN IF NOT EXISTS periods_per_week INTEGER DEFAULT 5")
+    else:
+        cur.execute("PRAGMA table_info(subjects)")
+        cols = {row["name"] for row in cur.fetchall()}
+        if "periods_per_week" not in cols:
+            cur.execute("ALTER TABLE subjects ADD COLUMN periods_per_week INTEGER DEFAULT 5")
+    conn.commit()
 
 
 def seed_data(conn):
@@ -418,3 +447,36 @@ def execute(query, params=()):
     conn.commit()
     conn.close()
     return last_id
+
+
+# --------------------------------------------------------------------------
+# Generation settings (scheduling rules toggles)
+# --------------------------------------------------------------------------
+DEFAULT_GENERATION_SETTINGS = {
+    "avoid_same_day_repeat": "1",  # "1" = avoid scheduling a subject twice on the same day
+}
+
+
+def get_generation_settings():
+    """Return all scheduling-rule settings as a dict of str->str, filled in
+    with defaults for any key that hasn't been saved yet."""
+    rows = fetch_all("SELECT key, value FROM generation_settings")
+    settings = dict(DEFAULT_GENERATION_SETTINGS)
+    for r in rows:
+        settings[r["key"]] = r["value"]
+    return settings
+
+
+def set_generation_setting(key, value):
+    if USE_POSTGRES:
+        execute(
+            "INSERT INTO generation_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (key, value),
+        )
+    else:
+        execute(
+            "INSERT INTO generation_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
