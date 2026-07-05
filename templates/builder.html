@@ -15,6 +15,28 @@
     </div>
   </form>
 
+  <form method="post" action="{{ url_for('generate_timetable') }}" class="form-row"
+        onsubmit="return confirm('This may overwrite existing entries for the selected scope. Continue?');">
+    <input type="hidden" name="stream_id" value="{{ stream_id }}">
+    <div>
+      <label>Auto-generate scope</label>
+      <select name="scope">
+        <option value="stream">This stream only</option>
+        <option value="all">All streams</option>
+      </select>
+    </div>
+    <div>
+      <label>&nbsp;</label>
+      <label style="font-weight:normal;">
+        <input type="checkbox" name="overwrite" value="1"> Overwrite existing entries
+      </label>
+    </div>
+    <div style="flex:0;">
+      <label>&nbsp;</label>
+      <button type="submit">Auto-Generate Timetable</button>
+    </div>
+  </form>
+
   {% if not streams %}
     <p class="section-note">Create a stream first on the "Grades &amp; Streams" tab.</p>
   {% else %}
