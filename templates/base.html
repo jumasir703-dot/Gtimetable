@@ -23,9 +23,9 @@
       <a href="{{ url_for('rooms_page') }}" class="{{ 'active' if request.endpoint=='rooms_page' else '' }}">Rooms</a>
       <a href="{{ url_for('builder_page') }}" class="{{ 'active' if request.endpoint=='builder_page' else '' }}">Timetable Builder</a>
       <a href="{{ url_for('view_page') }}" class="{{ 'active' if request.endpoint=='view_page' else '' }}">View / Export</a>
+      <a href="{{ url_for('rules_page') }}" class="{{ 'active' if request.endpoint=='rules_page' else '' }}">Scheduling Rules</a>
     </nav>
   </header>
-
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       <div class="flash-wrap">
@@ -35,7 +35,6 @@
       </div>
     {% endif %}
   {% endwith %}
-
   <main class="content">
     {% block content %}{% endblock %}
   </main>
