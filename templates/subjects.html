@@ -2,7 +2,6 @@
 {% block title %}Subjects{% endblock %}
 {% block content %}
 <h1>Subjects</h1>
-
 <div class="card">
   <form method="get" class="form-row" style="margin-top:0;">
     <div>
@@ -15,9 +14,8 @@
       </select>
     </div>
   </form>
-
   <table style="margin-top:14px;">
-    <thead><tr><th>Name</th><th>Category</th><th>Grade</th><th>Pathway</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Category</th><th>Grade</th><th>Pathway</th><th>Periods/wk</th><th></th></tr></thead>
     <tbody>
       {% for s in subjects %}
       <tr>
@@ -25,6 +23,14 @@
         <td>{{ s.category }}</td>
         <td>{{ s.grade_name }}</td>
         <td>{{ s.pathway_name or '—' }}</td>
+        <td>
+          <form class="inline-form" method="post" action="{{ url_for('update_subject_periods', subject_id=s.id) }}">
+            <input type="hidden" name="grade_filter" value="{{ grade_filter }}">
+            <input type="number" name="periods_per_week" min="1" max="15"
+                   value="{{ s.periods_per_week }}" style="width:56px;">
+            <button type="submit">Save</button>
+          </form>
+        </td>
         <td>
           <form class="inline-form" method="post" action="{{ url_for('delete_subject', subject_id=s.id) }}"
                 onsubmit="return confirm('Delete this subject?');">
@@ -34,12 +40,11 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="5" class="section-note">No subjects for this filter.</td></tr>
+      <tr><td colspan="6" class="section-note">No subjects for this filter.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
-
 <div class="card">
   <h3>Add a subject</h3>
   <form method="post" action="{{ url_for('add_subject') }}">
@@ -73,13 +78,16 @@
           {% endfor %}
         </select>
       </div>
+      <div>
+        <label>Periods/week</label>
+        <input type="number" name="periods_per_week" min="1" max="15" value="5" style="width:70px;">
+      </div>
       <div style="flex:0;">
         <button type="submit">Add Subject</button>
       </div>
     </div>
   </form>
 </div>
-
 <script>
   // Hide the pathway field when the selected grade isn't CBC-based.
   const gradeSelect = document.getElementById('grade-select');
