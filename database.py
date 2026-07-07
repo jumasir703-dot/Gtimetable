@@ -47,7 +47,16 @@ DB_PATH = os.environ.get(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "timetable.db"),
 )
 
-DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+# All weekdays the school could possibly teach on. Which of these are
+# actually "live" (i.e. generate columns on the timetable) is a per-school
+# choice stored in `school_settings.active_days` — see get_active_days().
+ALL_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+DEFAULT_ACTIVE_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
+# Kept for any code (or old imports) that still expects a static list —
+# new code should call get_active_days() instead, since this no longer
+# reflects a school's actual configured days.
+DAYS = DEFAULT_ACTIVE_DAYS
 
 
 # --------------------------------------------------------------------------
@@ -211,6 +220,13 @@ CREATE TABLE IF NOT EXISTS breaks (
     duration_minutes INTEGER NOT NULL,
     label TEXT
 );
+CREATE TABLE IF NOT EXISTS school_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    name TEXT NOT NULL DEFAULT 'My School',
+    tagline TEXT NOT NULL DEFAULT 'Senior School Timetable',
+    brand_mark TEXT NOT NULL DEFAULT 'TT',
+    active_days TEXT NOT NULL DEFAULT 'Monday,Tuesday,Wednesday,Thursday,Friday'
+);
 """
 
 SCHEMA_POSTGRES = """
@@ -309,6 +325,13 @@ CREATE TABLE IF NOT EXISTS breaks (
     duration_minutes INTEGER NOT NULL,
     label TEXT
 );
+CREATE TABLE IF NOT EXISTS school_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    name TEXT NOT NULL DEFAULT 'My School',
+    tagline TEXT NOT NULL DEFAULT 'Senior School Timetable',
+    brand_mark TEXT NOT NULL DEFAULT 'TT',
+    active_days TEXT NOT NULL DEFAULT 'Monday,Tuesday,Wednesday,Thursday,Friday'
+);
 """
 
 
@@ -377,6 +400,20 @@ def _migrate_schema(conn):
             _adapt("INSERT INTO breaks (after_period, duration_minutes, label) VALUES (?, ?, ?)"),
             (4, 20, "Break"),
         )
+
+    # Seed the single school_settings row (id=1). Runs for brand-new
+    # databases too, since CREATE TABLE's own column defaults only apply
+    # to columns not explicitly provided — here we provide them explicitly
+    # so the school name shown really is editable from day one.
+    cur.execute("SELECT COUNT(*) AS c FROM school_settings")
+    if cur.fetchone()["c"] == 0:
+        cur.execute(
+            _adapt(
+                "INSERT INTO school_settings (id, name, tagline, brand_mark, active_days) "
+                "VALUES (1, ?, ?, ?, ?)"
+            ),
+            ("My School", "Senior School Timetable", "TT", ",".join(DEFAULT_ACTIVE_DAYS)),
+        )
     conn.commit()
 
 
@@ -405,7 +442,17 @@ def _regenerate_periods(cur):
     for row in cur.fetchall():
         break_map[row["after_period"]] = break_map.get(row["after_period"], 0) + row["duration_minutes"]
 
-    for day in DAYS:
+    active_days = _get_active_days(cur)
+
+    # Drop every period belonging to a day that is no longer switched on in
+    # School Settings (e.g. the school stopped teaching on Saturdays). This
+    # cascades to remove any timetable_entries sitting in those periods.
+    cur.execute("SELECT DISTINCT day FROM periods")
+    for row in cur.fetchall():
+        if row["day"] not in active_days:
+            cur.execute(_adapt("DELETE FROM periods WHERE day=?"), (row["day"],))
+
+    for day in active_days:
         cur.execute(_adapt("SELECT period_number FROM periods WHERE day=?"), (day,))
         existing_numbers = {row["period_number"] for row in cur.fetchall()}
 
@@ -445,6 +492,78 @@ def regenerate_periods():
     _regenerate_periods(cur)
     conn.commit()
     conn.close()
+
+
+# --------------------------------------------------------------------------
+# School settings (name/tagline/brand + which weekdays generate columns)
+# --------------------------------------------------------------------------
+def _get_active_days(cur):
+    """Same as get_active_days() but reuses an already-open cursor, for use
+    inside functions (like _regenerate_periods) that are mid-transaction."""
+    cur.execute("SELECT active_days FROM school_settings WHERE id=1")
+    row = cur.fetchone()
+    if not row or not row["active_days"]:
+        return list(DEFAULT_ACTIVE_DAYS)
+    days = [d.strip() for d in row["active_days"].split(",") if d.strip()]
+    # Keep them in canonical Monday->Sunday order regardless of storage order.
+    return [d for d in ALL_WEEKDAYS if d in days] or list(DEFAULT_ACTIVE_DAYS)
+
+
+def get_active_days():
+    """The ordered list of weekdays this school currently teaches on — these
+    become the columns of every generated timetable grid. Falls back to
+    Monday-Friday if nothing has been configured yet."""
+    conn = get_connection()
+    cur = conn.cursor()
+    days = _get_active_days(cur)
+    conn.close()
+    return days
+
+
+def get_school_settings():
+    """Branding + config for the currently running school. Every template
+    and export title pulls the school's name from here, so multiple
+    deployments (or, later, multiple tenants) can each show their own
+    name/tagline instead of a hardcoded one."""
+    row = fetch_one("SELECT name, tagline, brand_mark, active_days FROM school_settings WHERE id=1")
+    if not row:
+        return {
+            "name": "My School",
+            "tagline": "Senior School Timetable",
+            "brand_mark": "TT",
+            "active_days": list(DEFAULT_ACTIVE_DAYS),
+        }
+    settings = dict(row)
+    settings["active_days"] = get_active_days()
+    return settings
+
+
+def set_school_settings(name, tagline, brand_mark, active_days_list):
+    """Save the school's name/tagline/brand mark and which weekdays it
+    teaches on. Does NOT itself regenerate periods — call regenerate_periods()
+    afterwards if active_days_list changed, so the grid's columns update."""
+    name = (name or "My School").strip() or "My School"
+    tagline = (tagline or "").strip()
+    brand_mark = (brand_mark or "TT").strip()[:4] or "TT"
+    days = [d for d in ALL_WEEKDAYS if d in (active_days_list or [])] or list(DEFAULT_ACTIVE_DAYS)
+    active_days_str = ",".join(days)
+
+    if USE_POSTGRES:
+        execute(
+            "INSERT INTO school_settings (id, name, tagline, brand_mark, active_days) "
+            "VALUES (1, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET "
+            "name = EXCLUDED.name, tagline = EXCLUDED.tagline, "
+            "brand_mark = EXCLUDED.brand_mark, active_days = EXCLUDED.active_days",
+            (name, tagline, brand_mark, active_days_str),
+        )
+    else:
+        execute(
+            "INSERT INTO school_settings (id, name, tagline, brand_mark, active_days) "
+            "VALUES (1, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET "
+            "name = excluded.name, tagline = excluded.tagline, "
+            "brand_mark = excluded.brand_mark, active_days = excluded.active_days",
+            (name, tagline, brand_mark, active_days_str),
+        )
 
 
 def get_day_structure():
