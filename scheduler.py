@@ -3,21 +3,27 @@ scheduler.py
 Automatic timetable generator for the School Timetable Manager.
 
 Design decisions (per Testy's answers):
-- periods_per_week is set per-subject on the Subjects page (not a global
-  default), so it's read straight off the subjects table.
-- If a subject has no teacher assigned yet, it is skipped entirely (its
-  slots are left empty) rather than scheduled with a blank teacher.
-- Whether to avoid repeating a subject twice on the same day for a stream
-  is a toggle in the Scheduling Rules settings (generation_settings table),
-  not hardcoded, so it can be flipped from the /rules page.
+- periods_per_week is set per-subject on the Subjects page.
+- If a subject has no teacher assigned yet, it is skipped entirely.
+- "Avoid same subject twice a day" is a global toggle in Scheduling Rules
+  (generation_settings table).
+- Two per-subject rules can be added from the Scheduling Rules page
+  (subject_rules table):
+    - "double_lesson": schedule N two-period-in-a-row blocks per week for
+      this subject (e.g. Physics gets 2 double lessons/week). Pairs are
+      only formed between periods that are genuinely back-to-back in time
+      (period A's end_time == period B's start_time), so a lesson never
+      gets paired across the mid-morning break.
+    - "not_after_period": this subject can never be placed in a period
+      whose period_number is greater than the given value (e.g. Mathematics
+      "not after period 6" keeps it out of the last two periods of the day).
 
 Algorithm: greedy with day-spread preference, teacher-conflict checking
-across the whole school, and light load-balancing when a subject has more
-than one qualified teacher. It's not a full constraint solver — if the
-data is very tight (e.g. only one teacher for a subject and their periods
-are already full elsewhere), some slots may go unfilled. Those are
-reported back so you know what to fix manually (add another teacher,
-free up a period, etc.) rather than silently failing.
+across the whole school, and load-balancing when a subject has more than
+one qualified teacher. Not a full constraint solver — if the data is very
+tight, some slots may go unfilled; those are reported back so you know
+what to fix (add a teacher, relax a rule, free up a period) rather than
+silently failing.
 """
 
 from collections import defaultdict
@@ -26,10 +32,10 @@ import database as db
 
 
 def _get_available_periods():
-    """All non-break periods, ordered by day then period number."""
+    """All non-break periods, with day/period_number/start/end times."""
     return db.fetch_all(
-        "SELECT id, day, period_number FROM periods WHERE is_break=0 "
-        "ORDER BY period_number, day"
+        "SELECT id, day, period_number, start_time, end_time FROM periods "
+        "WHERE is_break=0 ORDER BY period_number, day"
     )
 
 
@@ -41,14 +47,27 @@ def _teachers_for_subject(subject_id):
     return [r["teacher_id"] for r in rows]
 
 
+def _build_adjacency(periods):
+    """
+    Map period_id -> the period_id immediately after it on the same day
+    (only when truly back-to-back in time, i.e. one's end_time equals the
+    next's start_time — so a pair is never formed across a break).
+    """
+    by_day = defaultdict(list)
+    for p in periods:
+        by_day[p["day"]].append(p)
+    next_period = {}
+    for day, plist in by_day.items():
+        plist_sorted = sorted(plist, key=lambda p: p["period_number"])
+        for a, b in zip(plist_sorted, plist_sorted[1:]):
+            if a["end_time"] and a["end_time"] == b["start_time"]:
+                next_period[a["id"]] = b["id"]
+    return next_period
+
+
 def generate_timetable(stream_ids=None, overwrite=False):
     """
     Fill in timetable_entries automatically.
-
-    stream_ids: list of stream ids to generate for, or None for all streams.
-    overwrite:  if True, clears each targeted stream's existing entries
-                first. If False, only fills currently-empty slots and
-                leaves any manual entries you've already made untouched.
 
     Returns a list of per-stream report dicts:
         {"stream": name, "scheduled": int, "skipped": [str, ...]}
@@ -63,10 +82,10 @@ def generate_timetable(stream_ids=None, overwrite=False):
         streams = db.fetch_all("SELECT * FROM streams ORDER BY grade_id, name")
 
     all_periods = _get_available_periods()
+    next_period = _build_adjacency(all_periods)
 
     # teacher_busy tracks every (teacher_id, period_id) already booked
-    # anywhere in the school, so we never double-book a teacher across
-    # different streams.
+    # anywhere in the school, so we never double-book a teacher.
     teacher_busy = set()
     for e in db.fetch_all("SELECT teacher_id, period_id FROM timetable_entries"):
         if e["teacher_id"]:
@@ -110,38 +129,62 @@ def generate_timetable(stream_ids=None, overwrite=False):
                 stream_report["skipped"].append(f"{subject['name']}: no teacher assigned, skipped")
                 continue
 
-            placed = _place_subject(
-                subject, teachers, needed, available, teacher_busy, teacher_load,
-                subject_days_used, stream_id, avoid_same_day=avoid_same_day,
-            )
-            if placed < needed:
-                # relax the same-day rule as a second pass, if that's what's blocking us
-                more = _place_subject(
-                    subject, teachers, needed - placed, available, teacher_busy,
-                    teacher_load, subject_days_used, stream_id, avoid_same_day=False,
+            rules = db.get_subject_rules(subject["id"])
+            not_after = rules["not_after_period"]
+            doubles_needed = rules["double_lesson_count"]
+
+            placed = 0
+
+            doubles_placed = 0
+            if doubles_needed > 0:
+                doubles_placed = _place_doubles(
+                    subject, teachers, doubles_needed, available, not_after,
+                    next_period, teacher_busy, teacher_load, subject_days_used, stream_id,
                 )
-                placed += more
+                placed += doubles_placed * 2
+                if doubles_placed < doubles_needed:
+                    stream_report["skipped"].append(
+                        f"{subject['name']}: only {doubles_placed}/{doubles_needed} "
+                        f"double lesson(s) placed (no free adjacent slot/teacher)"
+                    )
+
+            remaining = needed - placed
+            if remaining > 0:
+                singles = _place_subject(
+                    subject, teachers, remaining, available, not_after, teacher_busy, teacher_load,
+                    subject_days_used, stream_id, avoid_same_day=avoid_same_day,
+                )
+                placed += singles
+                if singles < remaining:
+                    more = _place_subject(
+                        subject, teachers, remaining - singles, available, not_after, teacher_busy,
+                        teacher_load, subject_days_used, stream_id, avoid_same_day=False,
+                    )
+                    placed += more
 
             stream_report["scheduled"] += placed
             if placed < needed:
-                stream_report["skipped"].append(
-                    f"{subject['name']}: only {placed}/{needed} periods placed "
-                    f"(no free teacher/slot left)"
-                )
+                note = f"{subject['name']}: only {placed}/{needed} periods placed (no free teacher/slot left"
+                note += f", or ruled out by 'not after period {not_after}')" if not_after is not None else ")"
+                stream_report["skipped"].append(note)
 
         report.append(stream_report)
 
     return report
 
 
-def _place_subject(subject, teachers, needed, available, teacher_busy, teacher_load,
+def _place_subject(subject, teachers, needed, available, not_after, teacher_busy, teacher_load,
                     subject_days_used, stream_id, avoid_same_day):
-    """Try to place up to `needed` periods for a subject into `available`
-    slots (mutated in place as slots get used). Returns how many were placed."""
+    """Place up to `needed` single periods for a subject directly against the
+    real school-wide `available` list (mutated in place as slots get used —
+    there is only ever one such list per stream, so removals here are always
+    correctly reflected for every other subject processed afterwards)."""
     placed = 0
     for p in list(available):
         if placed >= needed:
             break
+        if not_after is not None and p["period_number"] > not_after:
+            continue
         if avoid_same_day and p["day"] in subject_days_used[subject["id"]]:
             continue
 
@@ -162,6 +205,50 @@ def _place_subject(subject, teachers, needed, available, teacher_busy, teacher_l
         teacher_load[chosen_teacher] += 1
         subject_days_used[subject["id"]].add(p["day"])
         available.remove(p)
+        placed += 1
+
+    return placed
+
+
+def _place_doubles(subject, teachers, doubles_needed, available, not_after, next_period,
+                    teacher_busy, teacher_load, subject_days_used, stream_id):
+    """Place up to `doubles_needed` two-period-in-a-row blocks for a subject,
+    directly against the real school-wide `available` list."""
+
+    def is_eligible(period):
+        return not_after is None or period["period_number"] <= not_after
+
+    placed = 0
+    for p in list(available):
+        if placed >= doubles_needed:
+            break
+        if not is_eligible(p):
+            continue
+        second_id = next_period.get(p["id"])
+        if second_id is None:
+            continue
+        second = next((a for a in available if a["id"] == second_id), None)
+        if second is None or not is_eligible(second):
+            continue  # partner slot already used elsewhere, or not eligible
+
+        chosen_teacher = None
+        for t in sorted(teachers, key=lambda tid: teacher_load[tid]):
+            if (t, p["id"]) not in teacher_busy and (t, second_id) not in teacher_busy:
+                chosen_teacher = t
+                break
+        if chosen_teacher is None:
+            continue
+
+        for slot in (p, second):
+            db.execute(
+                "INSERT INTO timetable_entries (stream_id, subject_id, teacher_id, room_id, period_id) "
+                "VALUES (?, ?, ?, NULL, ?)",
+                (stream_id, subject["id"], chosen_teacher, slot["id"]),
+            )
+            teacher_busy.add((chosen_teacher, slot["id"]))
+            teacher_load[chosen_teacher] += 1
+            available.remove(slot)
+        subject_days_used[subject["id"]].add(p["day"])
         placed += 1
 
     return placed
