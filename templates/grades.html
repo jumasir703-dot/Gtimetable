@@ -7,13 +7,15 @@
 <div class="grid-2" style="margin-top:18px;">
   <div class="card">
     <h3>Grades / Forms</h3>
-    <div class="pill-list">
-      {% for g in grades %}
-        <a class="pill {{ 'active' if g.id == selected_id else '' }}" href="{{ url_for('grades_page', grade_id=g.id) }}">
-          <span>{{ g.name }}</span>
-          <span class="tag">{{ g.curriculum }}</span>
-        </a>
-      {% endfor %}
+    <div class="select-nav">
+      <label for="grade-nav">Choose a grade</label>
+      <select id="grade-nav" onchange="if(this.value) location.href=this.value;">
+        {% for g in grades %}
+          <option value="{{ url_for('grades_page', grade_id=g.id) }}" {{ 'selected' if g.id == selected_id }}>{{ g.name }} — {{ g.curriculum }}</option>
+        {% else %}
+          <option value="">No grades yet</option>
+        {% endfor %}
+      </select>
     </div>
   </div>
 
