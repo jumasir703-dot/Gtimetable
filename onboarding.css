@@ -1,0 +1,503 @@
+/* ==========================================================================
+   Testy Timetables — Onboarding design system
+   Concept: a school timetable rendered as a chalkboard exercise book. The
+   setup rail is a literal mini-timetable — each step is a "period" that
+   fills in as the school admin completes it, mirroring the product's own
+   core object (a grid of periods) instead of a generic progress bar.
+   ========================================================================== */
+
+:root {
+    --chalk-bg: #F7F5EF;
+    --chalk-bg-raised: #FFFFFF;
+    --ink: #223A5E;
+    --ink-soft: #5B6B85;
+    --board-green: #1B4332;
+    --board-green-soft: #2E5943;
+    --marker-yellow: #E8B923;
+    --rule-red: #C1440E;
+    --sage: #7FA98C;
+    --sage-bg: #E9F1EC;
+    --line: #DCD6C7;
+
+    --font-display: 'Zilla Slab', Georgia, serif;
+    --font-body: 'Inter', -apple-system, sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--chalk-bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.55;
+}
+
+/* ---- Shell / layout ---- */
+
+.setup-shell {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    min-height: 100vh;
+}
+
+@media (max-width: 800px) {
+    .setup-shell { grid-template-columns: 1fr; }
+    .rail { position: static; }
+}
+
+.setup-main {
+    padding: 56px 48px;
+    max-width: 720px;
+}
+
+/* ---- Rail: the mini-timetable progress grid (signature element) ---- */
+
+.rail {
+    background: var(--board-green);
+    color: #EFF5F1;
+    padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.rail-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.rail-brand-mark {
+    font-family: var(--font-mono);
+    background: var(--marker-yellow);
+    color: var(--board-green);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 4px 7px;
+    border-radius: 3px;
+}
+
+.rail-brand-name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.01em;
+}
+
+.rail-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.rail-period {
+    display: grid;
+    grid-template-columns: 34px 1fr 20px;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 10px;
+    border-radius: 6px;
+    border-left: 3px solid transparent;
+    opacity: 0.55;
+}
+
+.rail-period-code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: #C9D8CD;
+    border: 1px dashed rgba(255,255,255,0.35);
+    border-radius: 4px;
+    text-align: center;
+    padding: 2px 0;
+}
+
+.rail-period-label {
+    font-size: 14px;
+}
+
+.rail-period-check {
+    color: var(--marker-yellow);
+    font-weight: 600;
+}
+
+.rail-period.is-current {
+    opacity: 1;
+    background: rgba(255,255,255,0.08);
+    border-left-color: var(--marker-yellow);
+}
+
+.rail-period.is-current .rail-period-code {
+    border-style: solid;
+    border-color: var(--marker-yellow);
+    color: var(--marker-yellow);
+}
+
+.rail-period.is-done {
+    opacity: 0.85;
+}
+
+.rail-period.is-done .rail-period-code {
+    background: var(--marker-yellow);
+    color: var(--board-green);
+    border-style: solid;
+    border-color: var(--marker-yellow);
+}
+
+.rail-footer {
+    margin-top: auto;
+    font-size: 13px;
+}
+
+.rail-footer a {
+    color: #D9E8DD;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255,255,255,0.3);
+}
+
+.rail-footer a:hover { border-color: var(--marker-yellow); color: var(--marker-yellow); }
+
+/* ---- Typography ---- */
+
+.eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--sage);
+    margin: 0 0 12px;
+}
+
+h1 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 32px;
+    line-height: 1.2;
+    margin: 0 0 16px;
+    color: var(--board-green);
+}
+
+.salutation {
+    font-size: 40px;
+}
+
+.lede {
+    color: var(--ink-soft);
+    font-size: 16px;
+    max-width: 52ch;
+    margin: 0 0 32px;
+}
+
+h2 {
+    font-family: var(--font-display);
+    font-size: 18px;
+    color: var(--board-green);
+    margin: 32px 0 12px;
+}
+
+/* ---- Forms ---- */
+
+.field-group {
+    border: none;
+    padding: 0;
+    margin: 0 0 28px;
+}
+
+.field-group legend {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 10px;
+    padding: 0;
+}
+
+.language-options {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.language-pill {
+    border: 1px solid var(--line);
+    background: var(--chalk-bg-raised);
+    border-radius: 999px;
+    padding: 8px 18px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.language-pill:has(input:checked) {
+    border-color: var(--board-green);
+    background: var(--sage-bg);
+    font-weight: 600;
+}
+
+.language-pill input { margin-right: 6px; }
+
+.welcome-actions { margin-top: 24px; }
+
+.btn {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 15px;
+    padding: 12px 26px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    display: inline-block;
+    text-decoration: none;
+}
+
+.btn-primary {
+    background: var(--board-green);
+    color: #fff;
+}
+
+.btn-primary:hover { background: var(--board-green-soft); }
+
+.btn-ghost {
+    background: transparent;
+    color: var(--board-green);
+    border: 1px solid var(--line);
+}
+
+.btn-ghost:hover { border-color: var(--board-green); }
+
+/* ---- Welcome page secondary links ---- */
+
+.welcome-secondary {
+    display: grid;
+    gap: 12px;
+    margin: 8px 0 36px;
+}
+
+.secondary-link {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--chalk-bg-raised);
+    text-decoration: none;
+    color: var(--ink);
+    transition: border-color 0.15s ease;
+}
+
+.secondary-link:hover { border-color: var(--board-green); }
+
+.secondary-link-icon { font-size: 20px; }
+
+.secondary-link strong { display: block; font-size: 15px; }
+.secondary-link small { color: var(--ink-soft); font-size: 13px; }
+
+.tutorial-list ol {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 14px;
+}
+
+.tutorial-list li {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+}
+
+.tutorial-step {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--sage-bg);
+    color: var(--board-green);
+    border-radius: 4px;
+    padding: 3px 7px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.tutorial-list p { margin: 2px 0 0; color: var(--ink-soft); font-size: 14px; }
+
+/* ---- Repeatable rows (teachers / leave) ---- */
+
+.repeat-table {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.repeat-row {
+    display: grid;
+    grid-template-columns: 2fr 2fr 1.2fr 32px;
+    gap: 10px;
+    align-items: center;
+}
+
+#leave-rows .repeat-row { grid-template-columns: 2fr 1.2fr 32px; }
+
+.repeat-header {
+    font-size: 12px;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.repeat-row input {
+    font-family: var(--font-body);
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-size: 14px;
+    width: 100%;
+    background: var(--chalk-bg-raised);
+}
+
+.repeat-row input:focus {
+    outline: 2px solid var(--sage);
+    outline-offset: 1px;
+    border-color: var(--board-green);
+}
+
+.row-remove {
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    width: 32px;
+    height: 38px;
+    cursor: pointer;
+    color: var(--rule-red);
+    font-size: 16px;
+}
+
+.already-added {
+    margin-top: 20px;
+    padding: 16px;
+    background: var(--sage-bg);
+    border-radius: 8px;
+}
+
+.already-added h2 { margin: 0 0 8px; font-size: 15px; }
+.already-added ul { margin: 0; padding-left: 18px; font-size: 14px; }
+
+/* ---- Rules step ---- */
+
+.rule-card {
+    display: grid;
+    gap: 4px;
+    margin-bottom: 24px;
+}
+
+.rule-toggle {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 14px 4px;
+    border-bottom: 1px solid var(--line);
+    font-size: 15px;
+}
+
+.rule-toggle input { width: 18px; height: 18px; accent-color: var(--board-green); }
+
+/* ---- Flash messages ---- */
+
+.flash-stack { margin-bottom: 20px; }
+
+.flash {
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 14px;
+    margin-bottom: 8px;
+}
+
+.flash-success { background: var(--sage-bg); color: var(--board-green); }
+.flash-error { background: #FBE7DD; color: var(--rule-red); }
+
+/* ---- Demo page ---- */
+
+.demo-shell {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 48px 32px;
+}
+
+.demo-badge {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--marker-yellow);
+    color: var(--board-green);
+    padding: 4px 10px;
+    border-radius: 4px;
+}
+
+.demo-header h1 {
+    margin-top: 12px;
+}
+
+.demo-header p {
+    color: var(--ink-soft);
+}
+
+.demo-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.demo-table th, .demo-table td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+}
+
+.demo-table th {
+    color: var(--ink-soft);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.03em;
+}
+
+.demo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+}
+
+.demo-day {
+    background: var(--chalk-bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.demo-day h3 {
+    font-family: var(--font-display);
+    color: var(--board-green);
+    margin: 0 0 10px;
+    font-size: 15px;
+}
+
+.demo-period {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    grid-template-rows: auto auto;
+    gap: 2px 8px;
+    padding: 8px 0;
+    border-top: 1px dashed var(--line);
+}
+
+.demo-period:first-of-type { border-top: none; }
+
+.demo-period-code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--sage);
+    grid-row: span 2;
+}
+
+.demo-period-subject { font-size: 13px; font-weight: 600; }
+.demo-period-teacher { font-size: 12px; color: var(--ink-soft); }
