@@ -50,6 +50,13 @@ def home():
     return redirect(url_for("grades_page"))
 
 
+@app.route("/offline")
+def offline_page():
+    """Shown by the service worker when there's no connection and the
+    requested page hasn't been cached yet from an earlier visit."""
+    return render_template("offline.html")
+
+
 # --------------------------------------------------------------------------
 # School Settings (name/tagline/brand + which weekdays are taught)
 # --------------------------------------------------------------------------
