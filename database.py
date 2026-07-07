@@ -469,6 +469,50 @@ def list_breaks():
     return fetch_all("SELECT * FROM breaks ORDER BY after_period")
 
 
+def get_break_rows():
+    """Display-only rows describing where each break sits in the day and
+    what time range it covers, e.g. for showing a 'Break' row on the
+    generated timetable between period 4 and period 5.
+
+    Breaks aren't stored in the `periods` table (the scheduler only ever
+    deals with real lesson periods), so this recomputes each break's
+    start/end time the same way `_regenerate_periods` lays out the day:
+    walking period 1..N, adding lesson_minutes each period, and adding the
+    break's duration right after its `after_period`. Since every day uses
+    the same day_structure, one pass covers all days (Mon-Fri identical).
+
+    Returns a list of dicts sorted by after_period:
+        {"after_period": int, "label": str, "start_time": "HH:MM", "end_time": "HH:MM"}
+    """
+    ds = get_day_structure()
+    start_hour, start_min = (int(x) for x in ds["start_time"].split(":"))
+
+    break_map = {}
+    for b in list_breaks():
+        entry = break_map.setdefault(b["after_period"], {"duration": 0, "label": b["label"]})
+        entry["duration"] += b["duration_minutes"]
+        if b["label"]:
+            entry["label"] = b["label"]
+
+    rows = []
+    minutes = start_hour * 60 + start_min
+    for p in range(1, ds["periods_per_day"] + 1):
+        minutes += ds["lesson_minutes"]  # end of period p
+        if p in break_map:
+            info = break_map[p]
+            b_start_h, b_start_m = divmod(minutes, 60)
+            b_end_min = minutes + info["duration"]
+            b_end_h, b_end_m = divmod(b_end_min, 60)
+            rows.append({
+                "after_period": p,
+                "label": info["label"] or "Break",
+                "start_time": f"{b_start_h:02d}:{b_start_m:02d}",
+                "end_time": f"{b_end_h:02d}:{b_end_m:02d}",
+            })
+            minutes = b_end_min
+    return rows
+
+
 def replace_breaks(break_list):
     """break_list: list of (after_period, duration_minutes, label) tuples.
     Wipes and re-inserts, since breaks are always edited as a whole set
