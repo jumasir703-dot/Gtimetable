@@ -73,6 +73,42 @@ h1,h2,h3{
   background: var(--green-900); color: var(--paper); font-weight: 600;
 }
 
+/* ---- Main nav dropdown menu ---- */
+.menu{ position: relative; }
+.menu-toggle{
+  display:flex; align-items:center; gap: 8px;
+  background: var(--green-900); color: var(--paper); border: none;
+  padding: 10px 16px; border-radius: 8px; font-size: .92rem; font-weight: 600;
+  cursor: pointer;
+}
+.menu-toggle:hover{ background: var(--green-700); }
+.menu-toggle svg{ transition: transform .15s ease; }
+.menu-toggle[aria-expanded="true"] svg{ transform: rotate(180deg); }
+.menu-panel{
+  display:none;
+  position: absolute; top: calc(100% + 8px); right: 0;
+  flex-direction: column; gap: 2px;
+  min-width: 220px; max-width: 90vw;
+  background: var(--paper); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: 0 12px 32px rgba(16,53,36,0.18);
+  padding: 8px; z-index: 40;
+}
+.menu-panel.open{ display:flex; }
+.menu-panel a{
+  text-decoration:none; color: var(--ink);
+  padding: 10px 12px; border-radius: 7px; font-size: .9rem;
+}
+.menu-panel a:hover{ background: var(--gold-100); }
+.menu-panel a.active{ background: var(--green-900); color: var(--paper); font-weight: 600; }
+
+@media (max-width: 480px){
+  .menu-panel{ right: 0; left: auto; }
+}
+
+/* ---- Nav-style dropdown used to pick an item (grade/teacher/etc.) instead of a pill list ---- */
+.select-nav{ margin-bottom: 14px; }
+.select-nav label{ margin-bottom: 6px; }
+
 /* ---- Flash messages ---- */
 .flash-wrap{ margin-bottom: 16px; display:flex; flex-direction: column; gap: 8px; }
 .flash{ padding: 10px 14px; border-radius: var(--radius); font-size: .9rem; }
