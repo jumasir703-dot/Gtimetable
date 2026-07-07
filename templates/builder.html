@@ -46,22 +46,26 @@
       <div class="tt-head">{{ day }}</div>
     {% endfor %}
 
-    {% for p in periods %}
-      <div class="tt-period">P{{ p.period_number }}<br>{{ p.start_time }}–{{ p.end_time }}</div>
-      {% for day in days %}
-        {% set entry = entries.get((day, p.period_number)) %}
-        <div class="tt-cell {{ 'filled' if entry }}"
-             data-day="{{ day }}" data-period="{{ p.period_number }}"
-             onclick="openCell('{{ day }}', {{ p.period_number }})">
-          {% if entry %}
-            <span class="subj">{{ entry.subject_name }}</span>
-            <span class="meta">{{ entry.teacher_name or '—' }}</span>
-            <span class="meta">{{ entry.room_name or '—' }}</span>
-          {% else %}
-            <span class="empty-label">+ add</span>
-          {% endif %}
-        </div>
-      {% endfor %}
+    {% for row in rows %}
+      {% if row.type == 'break' %}
+        <div class="tt-break">{{ row.label }} · {{ row.start_time }}–{{ row.end_time }}</div>
+      {% else %}
+        <div class="tt-period">P{{ row.period_number }}<br>{{ row.start_time }}–{{ row.end_time }}</div>
+        {% for day in days %}
+          {% set entry = entries.get((day, row.period_number)) %}
+          <div class="tt-cell {{ 'filled' if entry }}"
+               data-day="{{ day }}" data-period="{{ row.period_number }}"
+               onclick="openCell('{{ day }}', {{ row.period_number }})">
+            {% if entry %}
+              <span class="subj">{{ entry.subject_name }}</span>
+              <span class="meta">{{ entry.teacher_name or '—' }}</span>
+              <span class="meta">{{ entry.room_name or '—' }}</span>
+            {% else %}
+              <span class="empty-label">+ add</span>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% endif %}
     {% endfor %}
   </div>
   {% endif %}
