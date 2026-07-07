@@ -149,7 +149,8 @@ CREATE TABLE IF NOT EXISTS subjects (
 CREATE TABLE IF NOT EXISTS teachers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    email TEXT
+    email TEXT,
+    rank INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS teacher_subjects (
@@ -246,7 +247,8 @@ CREATE TABLE IF NOT EXISTS subjects (
 CREATE TABLE IF NOT EXISTS teachers (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
-    email TEXT
+    email TEXT,
+    rank INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS teacher_subjects (
@@ -346,11 +348,17 @@ def _migrate_schema(conn):
     cur = conn.cursor()
     if USE_POSTGRES:
         cur.execute("ALTER TABLE subjects ADD COLUMN IF NOT EXISTS periods_per_week INTEGER DEFAULT 5")
+        cur.execute("ALTER TABLE teachers ADD COLUMN IF NOT EXISTS rank INTEGER")
     else:
         cur.execute("PRAGMA table_info(subjects)")
         cols = {row["name"] for row in cur.fetchall()}
         if "periods_per_week" not in cols:
             cur.execute("ALTER TABLE subjects ADD COLUMN periods_per_week INTEGER DEFAULT 5")
+
+        cur.execute("PRAGMA table_info(teachers)")
+        teacher_cols = {row["name"] for row in cur.fetchall()}
+        if "rank" not in teacher_cols:
+            cur.execute("ALTER TABLE teachers ADD COLUMN rank INTEGER")
 
     # Seed day_structure/breaks defaults for databases that already existed
     # before this feature, matching the values their periods were originally
