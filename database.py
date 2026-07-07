@@ -189,6 +189,13 @@ CREATE TABLE IF NOT EXISTS generation_settings (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS subject_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    rule_type TEXT NOT NULL,
+    value INTEGER NOT NULL
+);
 """
 
 SCHEMA_POSTGRES = """
@@ -264,6 +271,13 @@ CREATE TABLE IF NOT EXISTS timetable_entries (
 CREATE TABLE IF NOT EXISTS generation_settings (
     key TEXT PRIMARY KEY,
     value TEXT
+);
+
+CREATE TABLE IF NOT EXISTS subject_rules (
+    id SERIAL PRIMARY KEY,
+    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+    rule_type TEXT NOT NULL,
+    value INTEGER NOT NULL
 );
 """
 
@@ -480,3 +494,45 @@ def set_generation_setting(key, value):
             "ON CONFLICT (key) DO UPDATE SET value = excluded.value",
             (key, value),
         )
+
+
+# --------------------------------------------------------------------------
+# Subject scheduling rules (double lessons, "not after period X", etc.)
+# --------------------------------------------------------------------------
+VALID_RULE_TYPES = {"double_lesson", "not_after_period"}
+
+
+def list_subject_rules():
+    """All subject rules with the subject's name attached, for display."""
+    return fetch_all(
+        "SELECT sr.id, sr.subject_id, sr.rule_type, sr.value, s.name AS subject_name "
+        "FROM subject_rules sr JOIN subjects s ON sr.subject_id = s.id "
+        "ORDER BY s.name, sr.rule_type"
+    )
+
+
+def get_subject_rules(subject_id):
+    """Return {'not_after_period': int or None, 'double_lesson_count': int} for one subject."""
+    rows = fetch_all("SELECT rule_type, value FROM subject_rules WHERE subject_id=?", (subject_id,))
+    result = {"not_after_period": None, "double_lesson_count": 0}
+    for r in rows:
+        if r["rule_type"] == "not_after_period":
+            # if more than one such rule exists, the strictest (smallest) wins
+            if result["not_after_period"] is None or r["value"] < result["not_after_period"]:
+                result["not_after_period"] = r["value"]
+        elif r["rule_type"] == "double_lesson":
+            result["double_lesson_count"] += r["value"]
+    return result
+
+
+def add_subject_rule(subject_id, rule_type, value):
+    if rule_type not in VALID_RULE_TYPES:
+        raise ValueError(f"Unknown rule_type: {rule_type}")
+    execute(
+        "INSERT INTO subject_rules (subject_id, rule_type, value) VALUES (?, ?, ?)",
+        (subject_id, rule_type, value),
+    )
+
+
+def delete_subject_rule(rule_id):
+    execute("DELETE FROM subject_rules WHERE id=?", (rule_id,))
