@@ -6,15 +6,16 @@
 <div class="grid-2">
   <div class="card">
     <h3>All teachers</h3>
-    <div class="pill-list">
-      {% for t in teachers %}
-        <a class="pill {{ 'active' if t.id == selected_id else '' }}" href="{{ url_for('teachers_page', teacher_id=t.id) }}">
-          <span>{{ t.name }}</span>
-          <span class="tag">{{ '#' + t.rank|string if t.rank is not none else 'no rank' }}</span>
-        </a>
-      {% else %}
-        <p class="section-note">No teachers yet.</p>
-      {% endfor %}
+    <div class="select-nav">
+      <label for="teacher-nav">Choose a teacher</label>
+      <select id="teacher-nav" onchange="if(this.value) location.href=this.value;">
+        <option value="">— choose —</option>
+        {% for t in teachers %}
+          <option value="{{ url_for('teachers_page', teacher_id=t.id) }}" {{ 'selected' if t.id == selected_id }}>{{ t.name }} ({{ '#' + t.rank|string if t.rank is not none else 'no rank' }})</option>
+        {% else %}
+          <option value="">No teachers yet</option>
+        {% endfor %}
+      </select>
     </div>
 
     <form method="post" action="{{ url_for('add_teacher') }}" style="margin-top:16px;">
