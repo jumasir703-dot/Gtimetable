@@ -16,6 +16,11 @@ from flask import (
     Flask, render_template, request, redirect, url_for,
     jsonify, Response, flash
 )
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 import database as db
 import scheduler
@@ -728,6 +733,79 @@ def export_csv():
         output.getvalue(),
         mimetype="text/csv",
         headers={"Content-Disposition": f"attachment;filename={title.replace(' ', '_')}.csv"},
+    )
+
+
+@app.route("/export.pdf")
+def export_pdf():
+    mode = request.args.get("mode", "stream")
+    target = request.args.get("target", type=int)
+    data = _grid_data(mode, target)
+    if not data:
+        return "Nothing to export", 400
+    title, days, display_rows, cells = data
+
+    page_size = landscape(A4)
+    left_margin = right_margin = 14 * mm
+    top_margin = bottom_margin = 12 * mm
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=page_size,
+        leftMargin=left_margin, rightMargin=right_margin,
+        topMargin=top_margin, bottomMargin=bottom_margin,
+    )
+    styles = getSampleStyleSheet()
+    story = [Paragraph(title, styles["Title"]), Spacer(1, 10)]
+
+    # Build the table body: a header row, then one row per lesson period or
+    # break marker (mirrors the on-screen grid and the CSV export).
+    table_data = [["Period"] + days]
+    break_row_indices = []
+    for r in display_rows:
+        row_index = len(table_data)  # index this row will land at in table_data
+        if r["type"] == "break":
+            label = f"{r['label']}  ({r['start_time']}\u2013{r['end_time']})"
+            table_data.append([label] + [""] * len(days))
+            break_row_indices.append(row_index)
+        else:
+            pnum = r["period_number"]
+            period_label = f"P{pnum}\n{r['start_time']}-{r['end_time']}"
+            row = [period_label] + [cells.get((d, pnum), "\u2014") for d in days]
+            table_data.append(row)
+
+    usable_width = page_size[0] - left_margin - right_margin
+    period_col_width = 26 * mm
+    day_col_width = (usable_width - period_col_width) / len(days)
+    col_widths = [period_col_width] + [day_col_width] * len(days)
+
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
+
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#103524")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e3dcc9")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fbf8f0")]),
+    ]
+    for idx in break_row_indices:
+        style_cmds.append(("SPAN", (0, idx), (len(days), idx)))
+        style_cmds.append(("BACKGROUND", (0, idx), (-1, idx), colors.HexColor("#f4e6c6")))
+        style_cmds.append(("FONTNAME", (0, idx), (-1, idx), "Helvetica-Bold"))
+        style_cmds.append(("TEXTCOLOR", (0, idx), (-1, idx), colors.HexColor("#103524")))
+
+    table.setStyle(TableStyle(style_cmds))
+    story.append(table)
+    doc.build(story)
+    buf.seek(0)
+
+    return Response(
+        buf.getvalue(),
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f"attachment;filename={title.replace(' ', '_')}.pdf"},
     )
 
 
