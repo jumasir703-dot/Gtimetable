@@ -264,7 +264,9 @@ def rules_page():
 def save_rules():
     # Checkbox: present in form data only when checked.
     avoid_same_day = "1" if request.form.get("avoid_same_day_repeat") else "0"
+    vary_period = "1" if request.form.get("vary_period_slot") else "0"
     db.set_generation_setting("avoid_same_day_repeat", avoid_same_day)
+    db.set_generation_setting("vary_period_slot", vary_period)
     flash("Scheduling rules updated.", "success")
     return redirect(url_for("rules_page"))
 
