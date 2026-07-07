@@ -25,16 +25,22 @@
         <span>{{ school.tagline }}</span>
       </div>
     </div>
-    <nav class="tabs">
-      <a href="{{ url_for('settings_page') }}" class="{{ 'active' if request.endpoint=='settings_page' else '' }}">School Settings</a>
-      <a href="{{ url_for('grades_page') }}" class="{{ 'active' if request.endpoint=='grades_page' else '' }}">Grades &amp; Streams</a>
-      <a href="{{ url_for('subjects_page') }}" class="{{ 'active' if request.endpoint=='subjects_page' else '' }}">Subjects</a>
-      <a href="{{ url_for('teachers_page') }}" class="{{ 'active' if request.endpoint=='teachers_page' else '' }}">Teachers</a>
-      <a href="{{ url_for('rooms_page') }}" class="{{ 'active' if request.endpoint=='rooms_page' else '' }}">Rooms</a>
-      <a href="{{ url_for('day_structure_page') }}" class="{{ 'active' if request.endpoint=='day_structure_page' else '' }}">Day Structure</a>
-      <a href="{{ url_for('builder_page') }}" class="{{ 'active' if request.endpoint=='builder_page' else '' }}">Timetable Builder</a>
-      <a href="{{ url_for('view_page') }}" class="{{ 'active' if request.endpoint=='view_page' else '' }}">View / Export</a>
-      <a href="{{ url_for('rules_page') }}" class="{{ 'active' if request.endpoint=='rules_page' else '' }}">Scheduling Rules</a>
+    <nav class="menu">
+      <button type="button" class="menu-toggle" id="menu-toggle" aria-haspopup="true" aria-expanded="false">
+        <span>Menu</span>
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 5l5 5 5-5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="menu-panel" id="menu-panel">
+        <a href="{{ url_for('settings_page') }}" class="{{ 'active' if request.endpoint=='settings_page' else '' }}">School Settings</a>
+        <a href="{{ url_for('grades_page') }}" class="{{ 'active' if request.endpoint=='grades_page' else '' }}">Grades &amp; Streams</a>
+        <a href="{{ url_for('subjects_page') }}" class="{{ 'active' if request.endpoint=='subjects_page' else '' }}">Subjects</a>
+        <a href="{{ url_for('teachers_page') }}" class="{{ 'active' if request.endpoint=='teachers_page' else '' }}">Teachers</a>
+        <a href="{{ url_for('rooms_page') }}" class="{{ 'active' if request.endpoint=='rooms_page' else '' }}">Rooms</a>
+        <a href="{{ url_for('day_structure_page') }}" class="{{ 'active' if request.endpoint=='day_structure_page' else '' }}">Day Structure</a>
+        <a href="{{ url_for('builder_page') }}" class="{{ 'active' if request.endpoint=='builder_page' else '' }}">Timetable Builder</a>
+        <a href="{{ url_for('view_page') }}" class="{{ 'active' if request.endpoint=='view_page' else '' }}">View / Export</a>
+        <a href="{{ url_for('rules_page') }}" class="{{ 'active' if request.endpoint=='rules_page' else '' }}">Scheduling Rules</a>
+      </div>
     </nav>
   </header>
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -56,6 +62,33 @@
       navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}");
     });
   }
+
+  // Single consolidated menu: click to open, click outside or pick a link to close.
+  (function(){
+    const toggle = document.getElementById('menu-toggle');
+    const panel = document.getElementById('menu-panel');
+    if (!toggle || !panel) return;
+
+    function closeMenu(){
+      panel.classList.remove('open');
+      toggle.setAttribute('aria-expanded', 'false');
+    }
+    function openMenu(){
+      panel.classList.add('open');
+      toggle.setAttribute('aria-expanded', 'true');
+    }
+
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      panel.classList.contains('open') ? closeMenu() : openMenu();
+    });
+    document.addEventListener('click', (e) => {
+      if (!panel.contains(e.target) && e.target !== toggle) closeMenu();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeMenu();
+    });
+  })();
 </script>
 </body>
 </html>
