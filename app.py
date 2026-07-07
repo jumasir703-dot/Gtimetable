@@ -387,6 +387,14 @@ def builder_page():
     days = db.DAYS
     display_rows = _rows_with_breaks(periods)
 
+    # Real period ids differ per day even for the same period_number, and the
+    # drag-and-drop grid needs the exact id to move/swap lessons — build a
+    # (day, period_number) -> period_id lookup for the template to use.
+    period_ids = {
+        (p["day"], p["period_number"]): p["id"]
+        for p in db.fetch_all("SELECT id, day, period_number FROM periods WHERE is_break=0")
+    }
+
     entries = {}
     if stream_id:
         entry_rows = db.fetch_all(
@@ -405,7 +413,7 @@ def builder_page():
 
     return render_template(
         "builder.html", streams=streams, stream_id=stream_id,
-        rows=display_rows, days=days, entries=entries,
+        rows=display_rows, days=days, entries=entries, period_ids=period_ids,
     )
 
 
@@ -523,6 +531,83 @@ def api_clear_cell():
         "DELETE FROM timetable_entries WHERE stream_id=? AND period_id=?",
         (stream_id, period_id),
     )
+    return jsonify({"ok": True})
+
+
+@app.route("/api/cell/move", methods=["POST"])
+def api_move_cell():
+    """Move a lesson from one period to another for the same stream (drag
+    and drop on the Builder grid). If the destination slot already has a
+    lesson, the two swap places instead of one overwriting the other."""
+    data = request.get_json()
+    stream_id = data.get("stream_id")
+    from_period_id = data.get("from_period_id")
+    to_period_id = data.get("to_period_id")
+    force = data.get("force", False)
+
+    if not stream_id or not from_period_id or not to_period_id:
+        return jsonify({"error": "Missing data for that move."}), 400
+    if from_period_id == to_period_id:
+        return jsonify({"ok": True})  # dropped back on itself, nothing to do
+
+    entry_from = db.fetch_one(
+        "SELECT * FROM timetable_entries WHERE stream_id=? AND period_id=?",
+        (stream_id, from_period_id),
+    )
+    if not entry_from:
+        return jsonify({"error": "That slot is empty — nothing to move."}), 400
+
+    entry_to = db.fetch_one(
+        "SELECT * FROM timetable_entries WHERE stream_id=? AND period_id=?",
+        (stream_id, to_period_id),
+    )
+
+    conflicts = []
+
+    def _check_conflicts(teacher_id, room_id, at_period_id):
+        if teacher_id:
+            clash = db.fetch_one(
+                "SELECT te.id FROM timetable_entries te WHERE te.teacher_id=? AND te.period_id=? AND te.stream_id != ?",
+                (teacher_id, at_period_id, stream_id),
+            )
+            if clash:
+                conflicts.append("The teacher for one of these lessons is already booked elsewhere in that period.")
+        if room_id:
+            clash = db.fetch_one(
+                "SELECT te.id FROM timetable_entries te WHERE te.room_id=? AND te.period_id=? AND te.stream_id != ?",
+                (room_id, at_period_id, stream_id),
+            )
+            if clash:
+                conflicts.append("The room for one of these lessons is already booked elsewhere in that period.")
+
+    # Moving entry_from into to_period_id...
+    _check_conflicts(entry_from["teacher_id"], entry_from["room_id"], to_period_id)
+    # ...and, if this is a swap, entry_to moving into from_period_id.
+    if entry_to:
+        _check_conflicts(entry_to["teacher_id"], entry_to["room_id"], from_period_id)
+
+    if conflicts and not force:
+        return jsonify({"conflicts": conflicts})
+
+    if entry_to:
+        # Swap the lesson content between the two existing rows rather than
+        # touching period_id — sidesteps the UNIQUE(stream_id, period_id)
+        # constraint entirely (both destination rows already exist).
+        db.execute(
+            "UPDATE timetable_entries SET subject_id=?, teacher_id=?, room_id=? WHERE id=?",
+            (entry_to["subject_id"], entry_to["teacher_id"], entry_to["room_id"], entry_from["id"]),
+        )
+        db.execute(
+            "UPDATE timetable_entries SET subject_id=?, teacher_id=?, room_id=? WHERE id=?",
+            (entry_from["subject_id"], entry_from["teacher_id"], entry_from["room_id"], entry_to["id"]),
+        )
+    else:
+        # Destination is empty — just relocate this lesson there.
+        db.execute(
+            "UPDATE timetable_entries SET period_id=? WHERE id=?",
+            (to_period_id, entry_from["id"]),
+        )
+
     return jsonify({"ok": True})
 
 
