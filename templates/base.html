@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{% block title %}Timetable{% endblock %} · Senior School Timetable</title>
+<title>{% block title %}Timetable{% endblock %} · {{ school.name }}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
 <!-- PWA: installable "app" support -->
@@ -13,19 +13,20 @@
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Timetable">
+<meta name="apple-mobile-web-app-title" content="{{ school.name }}">
 </head>
 <body>
 <div class="shell">
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark">TT</span>
+      <span class="brand-mark">{{ school.brand_mark }}</span>
       <div class="brand-text">
-        <strong>Senior School Timetable</strong>
-        <span>Grade 10 (CBE) · Form 3 · Form 4</span>
+        <strong>{{ school.name }}</strong>
+        <span>{{ school.tagline }}</span>
       </div>
     </div>
     <nav class="tabs">
+      <a href="{{ url_for('settings_page') }}" class="{{ 'active' if request.endpoint=='settings_page' else '' }}">School Settings</a>
       <a href="{{ url_for('grades_page') }}" class="{{ 'active' if request.endpoint=='grades_page' else '' }}">Grades &amp; Streams</a>
       <a href="{{ url_for('subjects_page') }}" class="{{ 'active' if request.endpoint=='subjects_page' else '' }}">Subjects</a>
       <a href="{{ url_for('teachers_page') }}" class="{{ 'active' if request.endpoint=='teachers_page' else '' }}">Teachers</a>
