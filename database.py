@@ -468,6 +468,7 @@ def execute(query, params=()):
 # --------------------------------------------------------------------------
 DEFAULT_GENERATION_SETTINGS = {
     "avoid_same_day_repeat": "1",  # "1" = avoid scheduling a subject twice on the same day
+    "vary_period_slot": "1",       # "1" = avoid a subject always landing in the same period number every day
 }
 
 
