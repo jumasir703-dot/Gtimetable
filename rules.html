@@ -1,0 +1,35 @@
+{% extends "_base.html" %}
+{% block title %}Scheduling rules{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <p class="eyebrow">Setup · P3</p>
+    <h1>Scheduling rules</h1>
+    <p class="lede">
+        These are the constraints your auto-scheduler must respect. This step links to your
+        existing scheduler module — replace the placeholder fields below with your real
+        rule fields (double lessons, teacher clash windows, free periods, etc.).
+    </p>
+
+    <form method="POST">
+        <div class="rule-card">
+            <label class="rule-toggle">
+                <input type="checkbox" name="allow_double_lessons" checked>
+                <span>Allow double lessons for practical subjects</span>
+            </label>
+            <label class="rule-toggle">
+                <input type="checkbox" name="avoid_teacher_clash" checked>
+                <span>Never schedule a teacher in two places at once</span>
+            </label>
+            <label class="rule-toggle">
+                <input type="checkbox" name="reserve_free_periods">
+                <span>Reserve at least one free period per day per class</span>
+            </label>
+        </div>
+
+        <div class="welcome-actions">
+            <button type="submit" class="btn btn-primary">Save and continue</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

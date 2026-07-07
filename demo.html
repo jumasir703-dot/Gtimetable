@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo Timetable · Testy Timetables</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/onboarding.css') }}">
+</head>
+<body>
+<div class="demo-shell">
+    <header class="demo-header">
+        <span class="demo-badge">Demo · read-only</span>
+        <h1>{{ school_name }}</h1>
+        <p>This is sample data so you can see a finished setup. Nothing here is saved or connected to your school.</p>
+        <a href="javascript:window.close()" class="btn btn-ghost">Close demo</a>
+    </header>
+
+    <section class="demo-section">
+        <h2>Teaching staff</h2>
+        <table class="demo-table">
+            <thead>
+                <tr><th>Name</th><th>Subject</th><th>Max lessons / week</th></tr>
+            </thead>
+            <tbody>
+                {% for t in teachers %}
+                <tr><td>{{ t.name }}</td><td>{{ t.subject }}</td><td>{{ t.max_lessons_per_week }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section class="demo-section">
+        <h2>Leave policy</h2>
+        <table class="demo-table">
+            <thead>
+                <tr><th>Leave type</th><th>Max days / term</th></tr>
+            </thead>
+            <tbody>
+                {% for lt in leave_types %}
+                <tr><td>{{ lt.name }}</td><td>{{ lt.max_days_per_term }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section class="demo-section">
+        <h2>Sample week</h2>
+        <div class="demo-grid">
+            {% for day, periods in timetable.items() %}
+            <div class="demo-day">
+                <h3>{{ day }}</h3>
+                {% for code, subject, teacher in periods %}
+                <div class="demo-period">
+                    <span class="demo-period-code">{{ code }}</span>
+                    <span class="demo-period-subject">{{ subject }}</span>
+                    <span class="demo-period-teacher">{{ teacher }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+</body>
+</html>

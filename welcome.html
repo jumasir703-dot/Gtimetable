@@ -1,0 +1,80 @@
+{% extends "_base.html" %}
+{% block title %}Welcome{% endblock %}
+
+{% block content %}
+<section class="panel panel-welcome">
+
+    <p class="eyebrow">Before the first bell rings</p>
+    <h1 class="salutation">Thank you for choosing<br>Testy&nbsp;Timetables</h1>
+    <p class="lede">
+        This is a brand-new setup — nothing is configured yet. Pick a language,
+        then walk through your teachers, leave policy, and scheduling rules.
+        It takes about ten minutes.
+    </p>
+
+    <form method="POST" class="welcome-form">
+
+        <fieldset class="field-group">
+            <legend>Choose your language</legend>
+            <div class="language-options">
+                {% for code, label in languages %}
+                <label class="language-pill">
+                    <input type="radio" name="language" value="{{ code }}"
+                        {% if (school.language if school else 'en') == code %}checked{% endif %}>
+                    <span>{{ label }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </fieldset>
+
+        <div class="welcome-actions">
+            <button type="submit" class="btn btn-primary">Start setup</button>
+        </div>
+    </form>
+
+    <div class="welcome-secondary">
+        <a href="{{ url_for('onboarding.demo') }}" target="_blank" rel="noopener" class="secondary-link">
+            <span class="secondary-link-icon" aria-hidden="true">&#128203;</span>
+            <span>
+                <strong>View a demo timetable</strong>
+                <small>See a finished setup before you build your own</small>
+            </span>
+        </a>
+
+        <a href="#tutorials" class="secondary-link">
+            <span class="secondary-link-icon" aria-hidden="true">&#127909;</span>
+            <span>
+                <strong>Go through the tutorials</strong>
+                <small>Short walkthroughs for each setup step</small>
+            </span>
+        </a>
+    </div>
+
+    <div id="tutorials" class="tutorial-list">
+        <h2>Tutorials</h2>
+        <ol>
+            <li>
+                <span class="tutorial-step">P1</span>
+                <div>
+                    <strong>Adding your teaching staff</strong>
+                    <p>Names, subjects taught, and maximum lessons per week.</p>
+                </div>
+            </li>
+            <li>
+                <span class="tutorial-step">P2</span>
+                <div>
+                    <strong>Setting your leave policy</strong>
+                    <p>Sick leave, compassionate leave, and official duty allowances.</p>
+                </div>
+            </li>
+            <li>
+                <span class="tutorial-step">P3</span>
+                <div>
+                    <strong>Scheduling rules</strong>
+                    <p>Double lessons, teacher clashes, and free periods the auto-scheduler must respect.</p>
+                </div>
+            </li>
+        </ol>
+    </div>
+</section>
+{% endblock %}

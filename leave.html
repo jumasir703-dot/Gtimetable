@@ -1,0 +1,60 @@
+{% extends "_base.html" %}
+{% block title %}Leave policy{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <p class="eyebrow">Setup · P2</p>
+    <h1>Set your leave policy</h1>
+    <p class="lede">Define the types of leave your staff can take and how many days are allowed per term. The scheduler uses this to keep timetables covered.</p>
+
+    <form method="POST" id="leave-form">
+        <div class="repeat-table" id="leave-rows">
+            <div class="repeat-row repeat-header">
+                <span>Leave type</span>
+                <span>Max days / term</span>
+                <span></span>
+            </div>
+            <div class="repeat-row">
+                <input type="text" name="leave_name" placeholder="e.g. Sick Leave" required>
+                <input type="number" name="leave_max_days" min="1" max="90" placeholder="5">
+                <button type="button" class="row-remove" aria-label="Remove row">&times;</button>
+            </div>
+        </div>
+
+        <button type="button" id="add-leave-row" class="btn btn-ghost">+ Add another leave type</button>
+
+        {% if leave_types %}
+        <div class="already-added">
+            <h2>Already added ({{ leave_types|length }})</h2>
+            <ul>
+                {% for lt in leave_types %}
+                <li>{{ lt.name }} — up to {{ lt.max_days_per_term or "unlimited" }} days/term</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <div class="welcome-actions">
+            <button type="submit" class="btn btn-primary">Save and continue</button>
+        </div>
+    </form>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.getElementById('add-leave-row').addEventListener('click', function () {
+    const rows = document.getElementById('leave-rows');
+    const template = rows.querySelectorAll('.repeat-row')[1];
+    const clone = template.cloneNode(true);
+    clone.querySelectorAll('input').forEach(function (input) { input.value = ''; });
+    rows.appendChild(clone);
+});
+document.getElementById('leave-rows').addEventListener('click', function (e) {
+    if (e.target.classList.contains('row-remove')) {
+        const allRows = document.querySelectorAll('#leave-rows .repeat-row:not(.repeat-header)');
+        if (allRows.length > 1) e.target.closest('.repeat-row').remove();
+    }
+});
+</script>
+{% endblock %}

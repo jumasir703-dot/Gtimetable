@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="{{ school.language if school else 'en' }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Setup{% endblock %} · Testy Timetables</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/onboarding.css') }}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<div class="setup-shell">
+
+    <aside class="rail" aria-label="Setup progress">
+        <div class="rail-brand">
+            <span class="rail-brand-mark">TT</span>
+            <span class="rail-brand-name">Testy Timetables</span>
+        </div>
+
+        <ol class="rail-grid">
+            {% set labels = {
+                'welcome': 'Welcome',
+                'teachers': 'Teachers',
+                'leave': 'Leave',
+                'rules': 'Scheduling rules',
+                'complete': 'Done'
+            } %}
+            {% for step in steps %}
+                {% set period_no = "P%d"|format(loop.index) %}
+                {% set is_current = (school and school.onboarding_step == step) %}
+                {% set is_done = steps.index(school.onboarding_step) > loop.index0 if school else false %}
+                <li class="rail-period
+                    {% if is_current %} is-current{% endif %}
+                    {% if is_done %} is-done{% endif %}">
+                    <span class="rail-period-code">{{ period_no }}</span>
+                    <span class="rail-period-label">{{ labels[step] }}</span>
+                    {% if is_done %}<span class="rail-period-check">&#10003;</span>{% endif %}
+                </li>
+            {% endfor %}
+        </ol>
+
+        <div class="rail-footer">
+            <a href="{{ url_for('onboarding.demo') }}" target="_blank" rel="noopener">View demo timetable →</a>
+        </div>
+    </aside>
+
+    <main class="setup-main">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-stack">
+                    {% for category, message in messages %}
+                        <div class="flash flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+</div>
+
+<script src="{{ url_for('static', filename='js/onboarding.js') }}"></script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>
