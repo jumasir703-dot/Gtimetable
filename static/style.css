@@ -155,6 +155,18 @@ button.danger:hover{ background: #832a21; }
 .tt-cell .subj{ font-weight: 700; color: var(--green-900); }
 .tt-cell .meta{ color: var(--muted); }
 .tt-cell .empty-label{ color: #b5ad96; font-style: italic; }
+.tt-break{
+  grid-column: 1 / -1;
+  background: repeating-linear-gradient(45deg, var(--gold-100), var(--gold-100) 10px, #f3ead0 10px, #f3ead0 20px);
+  color: var(--green-900); font-weight: 600; font-size: .8rem;
+  text-align: center; padding: 6px; border-radius: 6px;
+}
+
+/* ---- Break row (table view) ---- */
+tr.break-row td{
+  background: var(--gold-100); color: var(--green-900);
+  font-weight: 600; text-align: center;
+}
 
 /* ---- Modal ---- */
 .modal-backdrop{
