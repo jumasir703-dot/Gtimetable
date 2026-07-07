@@ -151,7 +151,10 @@ button.danger:hover{ background: #832a21; }
   transition: box-shadow .12s ease, border-color .12s ease;
 }
 .tt-cell:hover{ border-color: var(--green-500); box-shadow: var(--shadow); }
-.tt-cell.filled{ background: var(--success-bg); border-color: #b9d9c4; }
+.tt-cell.filled{ background: var(--success-bg); border-color: #b9d9c4; cursor: grab; }
+.tt-cell.filled:active{ cursor: grabbing; }
+.tt-cell.dragging{ opacity: .4; }
+.tt-cell.drag-over{ border-color: var(--green-700); box-shadow: 0 0 0 2px var(--green-500) inset; }
 .tt-cell .subj{ font-weight: 700; color: var(--green-900); }
 .tt-cell .meta{ color: var(--muted); }
 .tt-cell .empty-label{ color: #b5ad96; font-style: italic; }
