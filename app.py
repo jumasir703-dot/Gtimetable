@@ -294,6 +294,65 @@ def delete_subject_rule(rule_id):
 
 
 # --------------------------------------------------------------------------
+# Day Structure (start time, lesson length, breaks)
+# --------------------------------------------------------------------------
+@app.route("/day-structure")
+def day_structure_page():
+    ds = db.get_day_structure()
+    breaks = db.list_breaks()
+    return render_template("day_structure.html", ds=ds, breaks=breaks)
+
+
+@app.route("/day-structure/save", methods=["POST"])
+def save_day_structure():
+    start_time = request.form.get("start_time", "08:00")
+    lesson_minutes = request.form.get("lesson_minutes", type=int)
+    periods_per_day = request.form.get("periods_per_day", type=int)
+
+    if not lesson_minutes or lesson_minutes < 10 or not periods_per_day or periods_per_day < 1:
+        flash("Enter a valid lesson length and number of periods per day.", "error")
+        return redirect(url_for("day_structure_page"))
+
+    after_periods = request.form.getlist("after_period[]")
+    durations = request.form.getlist("duration[]")
+    labels = request.form.getlist("label[]")
+
+    break_list = []
+    shrinking_removes_break_rows = False
+    for ap_raw, dur_raw, label in zip(after_periods, durations, labels):
+        if not ap_raw or not dur_raw:
+            continue
+        ap, dur = int(ap_raw), int(dur_raw)
+        if ap < 1 or ap >= periods_per_day:
+            # a break "after period N" only makes sense if N is before the
+            # last period of the (possibly just-shrunk) day
+            shrinking_removes_break_rows = True
+            continue
+        if dur < 1:
+            continue
+        break_list.append((ap, dur, label.strip() or "Break"))
+
+    old_periods_per_day = db.get_day_structure()["periods_per_day"]
+    removed_periods = old_periods_per_day > periods_per_day
+
+    db.set_day_structure(start_time, lesson_minutes, periods_per_day)
+    db.replace_breaks(break_list)
+    db.regenerate_periods()
+
+    flash("Day structure updated — periods and break times have been regenerated.", "success")
+    if removed_periods:
+        flash(
+            f"You reduced periods/day from {old_periods_per_day} to {periods_per_day}: "
+            f"any timetable entries in the removed periods were cleared. Re-run "
+            f"Auto-Generate or fill those slots manually.",
+            "error",
+        )
+    if shrinking_removes_break_rows:
+        flash("One or more breaks were dropped because their period no longer fits in the day.", "error")
+    return redirect(url_for("day_structure_page"))
+
+
+# --------------------------------------------------------------------------
 # Timetable Builder
 # --------------------------------------------------------------------------
 @app.route("/builder")
