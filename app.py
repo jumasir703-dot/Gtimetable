@@ -246,7 +246,18 @@ def delete_room(room_id):
 @app.route("/rules")
 def rules_page():
     settings = db.get_generation_settings()
-    return render_template("rules.html", settings=settings)
+    subjects = db.fetch_all(
+        "SELECT sub.id, sub.name, g.name AS grade_name FROM subjects sub "
+        "JOIN grades g ON sub.grade_id = g.id ORDER BY g.name, sub.name"
+    )
+    subject_rules = db.list_subject_rules()
+    # periods 1..8 for the "not after period" dropdown (matches the seeded day length)
+    max_period = db.fetch_one("SELECT MAX(period_number) AS m FROM periods WHERE is_break=0")
+    period_options = list(range(1, (max_period["m"] or 8) + 1))
+    return render_template(
+        "rules.html", settings=settings, subjects=subjects,
+        subject_rules=subject_rules, period_options=period_options,
+    )
 
 
 @app.route("/rules/save", methods=["POST"])
@@ -255,6 +266,28 @@ def save_rules():
     avoid_same_day = "1" if request.form.get("avoid_same_day_repeat") else "0"
     db.set_generation_setting("avoid_same_day_repeat", avoid_same_day)
     flash("Scheduling rules updated.", "success")
+    return redirect(url_for("rules_page"))
+
+
+@app.route("/rules/subject_rule/add", methods=["POST"])
+def add_subject_rule():
+    subject_id = request.form.get("subject_id", type=int)
+    rule_type = request.form.get("rule_type", "")
+    value = request.form.get("value", type=int)
+
+    if not subject_id or rule_type not in db.VALID_RULE_TYPES or not value or value < 1:
+        flash("Choose a subject, rule type, and a valid positive number.", "error")
+        return redirect(url_for("rules_page"))
+
+    db.add_subject_rule(subject_id, rule_type, value)
+    flash("Rule added.", "success")
+    return redirect(url_for("rules_page"))
+
+
+@app.route("/rules/subject_rule/<int:rule_id>/delete", methods=["POST"])
+def delete_subject_rule(rule_id):
+    db.delete_subject_rule(rule_id)
+    flash("Rule removed.", "success")
     return redirect(url_for("rules_page"))
 
 
