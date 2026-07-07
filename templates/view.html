@@ -28,8 +28,9 @@
       </select>
     </div>
     {% if target %}
-    <div style="flex:0;">
+    <div style="flex:0; display:flex; gap:8px;">
       <a class="btn secondary" href="{{ url_for('export_csv', mode=mode, target=target) }}">Export to CSV</a>
+      <a class="btn secondary" href="{{ url_for('export_pdf', mode=mode, target=target) }}">Download PDF</a>
     </div>
     {% endif %}
   </form>
