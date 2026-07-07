@@ -32,12 +32,62 @@ with app.app_context():
     db.init_db()
 
 
+@app.context_processor
+def inject_school():
+    """Makes `school` (name/tagline/brand_mark/active_days) available in
+    every template without every route having to fetch and pass it —
+    this is what lets a school's own name appear in the header, browser
+    tab title, and PWA-install title on every single page."""
+    return {"school": db.get_school_settings()}
+
+
 # --------------------------------------------------------------------------
 # Home
 # --------------------------------------------------------------------------
 @app.route("/")
 def home():
     return redirect(url_for("grades_page"))
+
+
+# --------------------------------------------------------------------------
+# School Settings (name/tagline/brand + which weekdays are taught)
+# --------------------------------------------------------------------------
+@app.route("/settings")
+def settings_page():
+    school = db.get_school_settings()
+    return render_template(
+        "settings.html", school=school, all_weekdays=db.ALL_WEEKDAYS,
+    )
+
+
+@app.route("/settings/save", methods=["POST"])
+def save_settings():
+    name = request.form.get("name", "").strip()
+    tagline = request.form.get("tagline", "").strip()
+    brand_mark = request.form.get("brand_mark", "").strip()
+    active_days = request.form.getlist("active_days")
+
+    if not name:
+        flash("Enter a school name.", "error")
+        return redirect(url_for("settings_page"))
+    if not active_days:
+        flash("Choose at least one teaching day.", "error")
+        return redirect(url_for("settings_page"))
+
+    old_days = set(db.get_active_days())
+    db.set_school_settings(name, tagline, brand_mark, active_days)
+
+    if set(active_days) != old_days:
+        db.regenerate_periods()
+        flash(
+            "School details saved — the timetable's day columns were "
+            "regenerated to match your new teaching days.",
+            "success",
+        )
+    else:
+        flash("School details saved.", "success")
+
+    return redirect(url_for("settings_page"))
 
 
 # --------------------------------------------------------------------------
@@ -389,7 +439,7 @@ def builder_page():
     stream_id = request.args.get("stream_id", type=int) or (streams[0]["id"] if streams else None)
 
     periods = db.fetch_all("SELECT DISTINCT period_number, start_time, end_time FROM periods WHERE is_break=0 ORDER BY period_number")
-    days = db.DAYS
+    days = db.get_active_days()
     display_rows = _rows_with_breaks(periods)
 
     # Real period ids differ per day even for the same period_number, and the
@@ -647,7 +697,7 @@ def _rows_with_breaks(periods):
 
 
 def _grid_data(mode, target):
-    days = db.DAYS
+    days = db.get_active_days()
     periods = db.fetch_all("SELECT DISTINCT period_number, start_time, end_time FROM periods WHERE is_break=0 ORDER BY period_number")
     display_rows = _rows_with_breaks(periods)
 
@@ -667,7 +717,7 @@ def _grid_data(mode, target):
             (stream["id"],),
         )
         cells = {(r["day"], r["period_number"]): f"{r['subject_name']} ({r['teacher_name'] or '-'}, {r['room_name'] or '-'})" for r in rows}
-        title = f"Timetable for {stream['name']}"
+        title = f"{db.get_school_settings()['name']} — Timetable for {stream['name']}"
     else:
         teacher = db.fetch_one("SELECT * FROM teachers WHERE id=?", (target,))
         if not teacher:
@@ -684,7 +734,7 @@ def _grid_data(mode, target):
             (teacher["id"],),
         )
         cells = {(r["day"], r["period_number"]): f"{r['subject_name']} - {r['stream_name']} ({r['room_name'] or '-'})" for r in rows}
-        title = f"Timetable for {teacher['name']}"
+        title = f"{db.get_school_settings()['name']} — Timetable for {teacher['name']}"
 
     return title, days, display_rows, cells
 
