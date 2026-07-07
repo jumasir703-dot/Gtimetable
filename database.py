@@ -196,6 +196,20 @@ CREATE TABLE IF NOT EXISTS subject_rules (
     rule_type TEXT NOT NULL,
     value INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS day_structure (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    start_time TEXT NOT NULL DEFAULT '08:00',
+    lesson_minutes INTEGER NOT NULL DEFAULT 40,
+    periods_per_day INTEGER NOT NULL DEFAULT 8
+);
+
+CREATE TABLE IF NOT EXISTS breaks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    after_period INTEGER NOT NULL,
+    duration_minutes INTEGER NOT NULL,
+    label TEXT
+);
 """
 
 SCHEMA_POSTGRES = """
@@ -279,6 +293,20 @@ CREATE TABLE IF NOT EXISTS subject_rules (
     rule_type TEXT NOT NULL,
     value INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS day_structure (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    start_time TEXT NOT NULL DEFAULT '08:00',
+    lesson_minutes INTEGER NOT NULL DEFAULT 40,
+    periods_per_day INTEGER NOT NULL DEFAULT 8
+);
+
+CREATE TABLE IF NOT EXISTS breaks (
+    id SERIAL PRIMARY KEY,
+    after_period INTEGER NOT NULL,
+    duration_minutes INTEGER NOT NULL,
+    label TEXT
+);
 """
 
 
@@ -323,7 +351,134 @@ def _migrate_schema(conn):
         cols = {row["name"] for row in cur.fetchall()}
         if "periods_per_week" not in cols:
             cur.execute("ALTER TABLE subjects ADD COLUMN periods_per_week INTEGER DEFAULT 5")
+
+    # Seed day_structure/breaks defaults for databases that already existed
+    # before this feature, matching the values their periods were originally
+    # generated with (08:00 start, 40-min lessons, 20-min break after period
+    # 4, 8 periods/day) — so the Day Structure page shows what they already
+    # effectively have, rather than blanks, until they choose to change it.
+    cur.execute("SELECT COUNT(*) AS c FROM day_structure")
+    if cur.fetchone()["c"] == 0:
+        cur.execute(
+            _adapt("INSERT INTO day_structure (id, start_time, lesson_minutes, periods_per_day) VALUES (1, ?, ?, ?)"),
+            ("08:00", 40, 8),
+        )
+    cur.execute("SELECT COUNT(*) AS c FROM breaks")
+    if cur.fetchone()["c"] == 0:
+        cur.execute(
+            _adapt("INSERT INTO breaks (after_period, duration_minutes, label) VALUES (?, ?, ?)"),
+            (4, 20, "Break"),
+        )
     conn.commit()
+
+
+def _regenerate_periods(cur):
+    """
+    Recompute start_time/end_time (and insert/remove rows as needed) for
+    every day's periods, based on the day_structure + breaks settings.
+
+    Existing period rows are UPDATEd in place whenever their period_number
+    still exists in the new structure, so their id (and therefore any
+    timetable_entries pointing at them) stays valid — only the times/label
+    change. Rows are only inserted (new period_number) or deleted (old
+    period_number beyond the new periods_per_day) when the day actually
+    grew or shrank; deleting cascades to remove any timetable_entries that
+    were sitting in a period that no longer exists.
+    """
+    cur.execute("SELECT start_time, lesson_minutes, periods_per_day FROM day_structure WHERE id=1")
+    ds = cur.fetchone()
+    if not ds:
+        return
+    start_time, lesson_minutes, periods_per_day = ds["start_time"], ds["lesson_minutes"], ds["periods_per_day"]
+    start_hour, start_min = (int(x) for x in start_time.split(":"))
+
+    cur.execute("SELECT after_period, duration_minutes FROM breaks ORDER BY after_period")
+    break_map = {}
+    for row in cur.fetchall():
+        break_map[row["after_period"]] = break_map.get(row["after_period"], 0) + row["duration_minutes"]
+
+    for day in DAYS:
+        cur.execute(_adapt("SELECT period_number FROM periods WHERE day=?"), (day,))
+        existing_numbers = {row["period_number"] for row in cur.fetchall()}
+
+        for num in existing_numbers:
+            if num > periods_per_day:
+                cur.execute(_adapt("DELETE FROM periods WHERE day=? AND period_number=?"), (day, num))
+
+        minutes = start_hour * 60 + start_min
+        for p in range(1, periods_per_day + 1):
+            s_h, s_m = divmod(minutes, 60)
+            e_min = minutes + lesson_minutes
+            e_h, e_m = divmod(e_min, 60)
+            start_str, end_str = f"{s_h:02d}:{s_m:02d}", f"{e_h:02d}:{e_m:02d}"
+            if p in existing_numbers:
+                cur.execute(
+                    _adapt("UPDATE periods SET start_time=?, end_time=?, label=? WHERE day=? AND period_number=?"),
+                    (start_str, end_str, f"Lesson {p}", day, p),
+                )
+            else:
+                cur.execute(
+                    _adapt(
+                        "INSERT INTO periods (day, period_number, start_time, end_time, is_break, label) "
+                        "VALUES (?, ?, ?, ?, 0, ?)"
+                    ),
+                    (day, p, start_str, end_str, f"Lesson {p}"),
+                )
+            minutes = e_min
+            if p in break_map:
+                minutes += break_map[p]
+
+
+def regenerate_periods():
+    """Public entry point: open a connection, apply the current
+    day_structure/breaks settings to every period, commit, close."""
+    conn = get_connection()
+    cur = conn.cursor()
+    _regenerate_periods(cur)
+    conn.commit()
+    conn.close()
+
+
+def get_day_structure():
+    row = fetch_one("SELECT start_time, lesson_minutes, periods_per_day FROM day_structure WHERE id=1")
+    if row:
+        return dict(row)
+    return {"start_time": "08:00", "lesson_minutes": 40, "periods_per_day": 8}
+
+
+def set_day_structure(start_time, lesson_minutes, periods_per_day):
+    if USE_POSTGRES:
+        execute(
+            "INSERT INTO day_structure (id, start_time, lesson_minutes, periods_per_day) "
+            "VALUES (1, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET "
+            "start_time = EXCLUDED.start_time, lesson_minutes = EXCLUDED.lesson_minutes, "
+            "periods_per_day = EXCLUDED.periods_per_day",
+            (start_time, lesson_minutes, periods_per_day),
+        )
+    else:
+        execute(
+            "INSERT INTO day_structure (id, start_time, lesson_minutes, periods_per_day) "
+            "VALUES (1, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET "
+            "start_time = excluded.start_time, lesson_minutes = excluded.lesson_minutes, "
+            "periods_per_day = excluded.periods_per_day",
+            (start_time, lesson_minutes, periods_per_day),
+        )
+
+
+def list_breaks():
+    return fetch_all("SELECT * FROM breaks ORDER BY after_period")
+
+
+def replace_breaks(break_list):
+    """break_list: list of (after_period, duration_minutes, label) tuples.
+    Wipes and re-inserts, since breaks are always edited as a whole set
+    from the Day Structure page rather than one at a time."""
+    execute("DELETE FROM breaks")
+    for after_period, duration_minutes, label in break_list:
+        execute(
+            "INSERT INTO breaks (after_period, duration_minutes, label) VALUES (?, ?, ?)",
+            (after_period, duration_minutes, label),
+        )
 
 
 def seed_data(conn):
@@ -394,29 +549,11 @@ def seed_data(conn):
                 (s, grade_id),
             )
 
-    start_hour, start_min = 8, 0
-    lesson_len = 40
-    break_after = 4
-    for day in DAYS:
-        minutes = start_hour * 60 + start_min
-        for p in range(1, 9):
-            s_h, s_m = divmod(minutes, 60)
-            e_min = minutes + lesson_len
-            e_h, e_m = divmod(e_min, 60)
-            cur.execute(
-                _adapt(
-                    "INSERT INTO periods (day, period_number, start_time, end_time, is_break, label) "
-                    "VALUES (?, ?, ?, ?, 0, ?)"
-                ),
-                (day, p, f"{s_h:02d}:{s_m:02d}", f"{e_h:02d}:{e_m:02d}", f"Lesson {p}"),
-            )
-            minutes = e_min
-            if p == break_after:
-                minutes += 20
-
     for name, cap in [("Room 1", 45), ("Room 2", 45), ("Lab 1", 30), ("Lab 2", 30)]:
         cur.execute(_adapt("INSERT INTO rooms (name, capacity) VALUES (?, ?)"), (name, cap))
 
+    conn.commit()
+    _regenerate_periods(cur)
     conn.commit()
 
 
