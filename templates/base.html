@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}Timetable{% endblock %} · Senior School Timetable</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+<!-- PWA: installable "app" support -->
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#1e2a38">
+<link rel="icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Timetable">
 </head>
 <body>
 <div class="shell">
@@ -21,6 +30,7 @@
       <a href="{{ url_for('subjects_page') }}" class="{{ 'active' if request.endpoint=='subjects_page' else '' }}">Subjects</a>
       <a href="{{ url_for('teachers_page') }}" class="{{ 'active' if request.endpoint=='teachers_page' else '' }}">Teachers</a>
       <a href="{{ url_for('rooms_page') }}" class="{{ 'active' if request.endpoint=='rooms_page' else '' }}">Rooms</a>
+      <a href="{{ url_for('day_structure_page') }}" class="{{ 'active' if request.endpoint=='day_structure_page' else '' }}">Day Structure</a>
       <a href="{{ url_for('builder_page') }}" class="{{ 'active' if request.endpoint=='builder_page' else '' }}">Timetable Builder</a>
       <a href="{{ url_for('view_page') }}" class="{{ 'active' if request.endpoint=='view_page' else '' }}">View / Export</a>
       <a href="{{ url_for('rules_page') }}" class="{{ 'active' if request.endpoint=='rules_page' else '' }}">Scheduling Rules</a>
@@ -39,5 +49,12 @@
     {% block content %}{% endblock %}
   </main>
 </div>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}");
+    });
+  }
+</script>
 </body>
 </html>
