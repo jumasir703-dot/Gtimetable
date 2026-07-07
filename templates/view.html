@@ -35,7 +35,7 @@
   </form>
 
   {% if grid %}
-    {% set title, days, period_numbers, cells = grid %}
+    {% set title, days, display_rows, cells = grid %}
     <h3 style="margin-top:20px;">{{ title }}</h3>
     <div style="overflow-x:auto;">
     <table>
@@ -46,13 +46,21 @@
         </tr>
       </thead>
       <tbody>
-        {% for pnum, s, e in period_numbers %}
+        {% for row in display_rows %}
+        {% if row.type == 'break' %}
+        <tr class="break-row">
+          <td colspan="{{ days|length + 1 }}">
+            {{ row.label }} <span class="section-note" style="margin:0;">{{ row.start_time }}–{{ row.end_time }}</span>
+          </td>
+        </tr>
+        {% else %}
         <tr>
-          <td>P{{ pnum }} <span class="section-note" style="margin:0;">{{ s }}–{{ e }}</span></td>
+          <td>P{{ row.period_number }} <span class="section-note" style="margin:0;">{{ row.start_time }}–{{ row.end_time }}</span></td>
           {% for d in days %}
-            <td>{{ cells.get((d, pnum), '—') }}</td>
+            <td>{{ cells.get((d, row.period_number), '—') }}</td>
           {% endfor %}
         </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>
