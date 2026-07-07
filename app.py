@@ -168,7 +168,9 @@ def delete_subject(subject_id):
 # --------------------------------------------------------------------------
 @app.route("/teachers")
 def teachers_page():
-    teachers = db.fetch_all("SELECT * FROM teachers ORDER BY name")
+    teachers = db.fetch_all(
+        "SELECT * FROM teachers ORDER BY CASE WHEN rank IS NULL THEN 1 ELSE 0 END, rank, name"
+    )
     selected_id = request.args.get("teacher_id", type=int)
     all_subjects = db.fetch_all(
         """SELECT sub.id, sub.name, g.name as grade_name FROM subjects sub
@@ -178,9 +180,10 @@ def teachers_page():
     if selected_id:
         assigned_ids = {r["subject_id"] for r in db.fetch_all(
             "SELECT subject_id FROM teacher_subjects WHERE teacher_id=?", (selected_id,))}
+    selected_teacher = next((t for t in teachers if t["id"] == selected_id), None)
     return render_template(
         "teachers.html", teachers=teachers, selected_id=selected_id,
-        all_subjects=all_subjects, assigned_ids=assigned_ids,
+        all_subjects=all_subjects, assigned_ids=assigned_ids, selected_teacher=selected_teacher,
     )
 
 
@@ -188,11 +191,28 @@ def teachers_page():
 def add_teacher():
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip()
+    rank = request.form.get("rank", type=int)
     if not name:
         flash("Enter a teacher name.", "error")
         return redirect(url_for("teachers_page"))
-    db.execute("INSERT INTO teachers (name, email) VALUES (?, ?)", (name, email))
+    db.execute("INSERT INTO teachers (name, email, rank) VALUES (?, ?, ?)", (name, email, rank))
     return redirect(url_for("teachers_page"))
+
+
+@app.route("/teachers/<int:teacher_id>/update", methods=["POST"])
+def update_teacher(teacher_id):
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip()
+    rank = request.form.get("rank", type=int)
+    if not name:
+        flash("Enter a teacher name.", "error")
+        return redirect(url_for("teachers_page", teacher_id=teacher_id))
+    db.execute(
+        "UPDATE teachers SET name=?, email=?, rank=? WHERE id=?",
+        (name, email, rank, teacher_id),
+    )
+    flash("Teacher details updated.", "success")
+    return redirect(url_for("teachers_page", teacher_id=teacher_id))
 
 
 @app.route("/teachers/<int:teacher_id>/delete", methods=["POST"])
