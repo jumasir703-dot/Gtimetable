@@ -171,6 +171,18 @@ tr.break-row td{
   font-weight: 600; text-align: center;
 }
 
+/* ---- Full grid (rows + columns) for the timetable view/export table ---- */
+table.tt-view-table{
+  border: 1px solid var(--green-900);
+  border-collapse: collapse;
+}
+table.tt-view-table th, table.tt-view-table td{
+  border: 1px solid var(--line);
+}
+table.tt-view-table th{
+  border-color: var(--green-900);
+}
+
 /* ---- Modal ---- */
 .modal-backdrop{
   position: fixed; inset:0; background: rgba(16,53,36,0.45);
