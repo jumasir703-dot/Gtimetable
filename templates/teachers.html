@@ -10,7 +10,7 @@
       {% for t in teachers %}
         <a class="pill {{ 'active' if t.id == selected_id else '' }}" href="{{ url_for('teachers_page', teacher_id=t.id) }}">
           <span>{{ t.name }}</span>
-          <span class="tag">{{ t.email or 'no email' }}</span>
+          <span class="tag">{{ '#' + t.rank|string if t.rank is not none else 'no rank' }}</span>
         </a>
       {% else %}
         <p class="section-note">No teachers yet.</p>
@@ -27,10 +27,16 @@
           <label>Email</label>
           <input type="email" name="email">
         </div>
+        <div style="flex:0; min-width:100px;">
+          <label>Rank</label>
+          <input type="number" name="rank" min="1" placeholder="e.g. 1">
+        </div>
         <div style="flex:0;">
+          <label>&nbsp;</label>
           <button type="submit">Add Teacher</button>
         </div>
       </div>
+      <p class="section-note">Rank is a seniority number you assign yourself — e.g. Principal = 1, Deputy = 2. Lower numbers sort first. Leave blank if not needed.</p>
     </form>
 
     {% if selected_id %}
@@ -41,7 +47,33 @@
     {% endif %}
   </div>
 
+  <div>
   <div class="card">
+    <h3>Teacher details</h3>
+    {% if not selected_id or not selected_teacher %}
+      <p class="section-note">Select a teacher on the left to edit their details.</p>
+    {% else %}
+      <form method="post" action="{{ url_for('update_teacher', teacher_id=selected_id) }}">
+        <div class="form-row" style="margin-top:0;">
+          <div>
+            <label>Name</label>
+            <input type="text" name="name" value="{{ selected_teacher.name }}" required>
+          </div>
+          <div>
+            <label>Email</label>
+            <input type="email" name="email" value="{{ selected_teacher.email or '' }}">
+          </div>
+          <div style="flex:0; min-width:100px;">
+            <label>Rank</label>
+            <input type="number" name="rank" min="1" value="{{ selected_teacher.rank if selected_teacher.rank is not none else '' }}" placeholder="e.g. 1">
+          </div>
+        </div>
+        <button type="submit" style="margin-top:12px;">Save Details</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <div class="card" style="margin-top:18px;">
     <h3>Subjects this teacher can teach</h3>
     {% if not selected_id %}
       <p class="section-note">Select a teacher on the left to assign subjects.</p>
@@ -58,6 +90,7 @@
         <button type="submit" style="margin-top:12px;">Save Subject Assignments</button>
       </form>
     {% endif %}
+  </div>
   </div>
 </div>
 {% endblock %}
