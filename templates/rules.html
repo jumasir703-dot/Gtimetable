@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Scheduling Rules{% endblock %}
+{% block content %}
+<h1>Scheduling Rules</h1>
+<div class="card">
+  <p class="section-note">
+    These control how the "Auto-Generate Timetable" button on the Builder page behaves.
+    Tell me any new rule you want and I'll add it here as a toggle.
+  </p>
+  <form method="post" action="{{ url_for('save_rules') }}">
+    <label style="font-weight:normal;">
+      <input type="checkbox" name="avoid_same_day_repeat"
+             {% if settings.avoid_same_day_repeat == '1' %}checked{% endif %}>
+      Avoid scheduling the same subject twice on the same day for a stream
+      (falls back to allowing it only if there's no other way to fit all periods in)
+    </label>
+    <br><br>
+    <button type="submit">Save Rules</button>
+  </form>
+</div>
+{% endblock %}
