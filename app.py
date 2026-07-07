@@ -11,6 +11,7 @@ Structure:
 import csv
 import io
 import os
+import re
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -669,6 +670,20 @@ def api_move_cell():
 # --------------------------------------------------------------------------
 # View / Export
 # --------------------------------------------------------------------------
+def _safe_filename(title, extension):
+    """Turn a display title (which may contain unicode like the '—' between
+    school name and stream name) into a plain-ASCII filename. HTTP headers
+    must be latin-1/ASCII-safe — a non-ASCII character in Content-Disposition
+    causes a 500 error on a real WSGI server (e.g. gunicorn on Render), even
+    though it can look fine when tested locally. Non-ASCII characters are
+    dropped rather than substituted, and runs of anything else collapse to a
+    single underscore, so 'School — Timetable for X' becomes
+    'School_Timetable_for_X.pdf'."""
+    ascii_only = title.encode("ascii", "ignore").decode("ascii")
+    safe = re.sub(r"[^A-Za-z0-9]+", "_", ascii_only).strip("_")
+    return f"{safe or 'timetable'}.{extension}"
+
+
 def _rows_with_breaks(periods):
     """Interleave lesson periods with break marker rows, in day order.
     `periods` is a list of period rows (period_number, start_time, end_time).
@@ -782,7 +797,7 @@ def export_csv():
     return Response(
         output.getvalue(),
         mimetype="text/csv",
-        headers={"Content-Disposition": f"attachment;filename={title.replace(' ', '_')}.csv"},
+        headers={"Content-Disposition": f"attachment;filename={_safe_filename(title, 'csv')}"},
     )
 
 
@@ -855,7 +870,7 @@ def export_pdf():
     return Response(
         buf.getvalue(),
         mimetype="application/pdf",
-        headers={"Content-Disposition": f"attachment;filename={title.replace(' ', '_')}.pdf"},
+        headers={"Content-Disposition": f"attachment;filename={_safe_filename(title, 'pdf')}"},
     )
 
 
