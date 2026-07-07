@@ -53,8 +53,15 @@
         <div class="tt-period">P{{ row.period_number }}<br>{{ row.start_time }}–{{ row.end_time }}</div>
         {% for day in days %}
           {% set entry = entries.get((day, row.period_number)) %}
+          {% set pid = period_ids.get((day, row.period_number)) %}
           <div class="tt-cell {{ 'filled' if entry }}"
-               data-day="{{ day }}" data-period="{{ row.period_number }}"
+               data-day="{{ day }}" data-period="{{ row.period_number }}" data-period-id="{{ pid }}"
+               draggable="{{ 'true' if entry else 'false' }}"
+               ondragstart="onCellDragStart(event, {{ pid }})"
+               ondragend="onCellDragEnd(event)"
+               ondragover="onCellDragOver(event)"
+               ondragleave="onCellDragLeave(event)"
+               ondrop="onCellDrop(event, {{ pid }})"
                onclick="openCell('{{ day }}', {{ row.period_number }})">
             {% if entry %}
               <span class="subj">{{ entry.subject_name }}</span>
@@ -172,6 +179,67 @@ function clearCell(){
   })
   .then(r => r.json())
   .then(() => { closeModal(); location.reload(); });
+}
+
+// --- Drag-and-drop: lift a lesson and drop it on another slot to move it,
+// or swap it with whatever lesson is already there. ---
+let dragSourcePeriodId = null;
+
+function onCellDragStart(e, periodId){
+  dragSourcePeriodId = periodId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', String(periodId));
+  e.currentTarget.classList.add('dragging');
+}
+
+function onCellDragEnd(e){
+  e.currentTarget.classList.remove('dragging');
+}
+
+function onCellDragOver(e){
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+
+function onCellDragLeave(e){
+  e.currentTarget.classList.remove('drag-over');
+}
+
+function onCellDrop(e, toPeriodId){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  const fromPeriodId = dragSourcePeriodId;
+  dragSourcePeriodId = null;
+  if (!fromPeriodId || fromPeriodId === toPeriodId) return;
+  moveLesson(fromPeriodId, toPeriodId, false);
+}
+
+function moveLesson(fromPeriodId, toPeriodId, force){
+  fetch('/api/cell/move', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      stream_id: STREAM_ID,
+      from_period_id: fromPeriodId,
+      to_period_id: toPeriodId,
+      force: force,
+    }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.conflicts){
+      if (confirm(data.conflicts.join('\n') + '\n\nMove anyway?')){
+        moveLesson(fromPeriodId, toPeriodId, true);
+      }
+      return;
+    }
+    if (data.error){
+      alert(data.error);
+      return;
+    }
+    location.reload();
+  });
 }
 </script>
 {% endblock %}
