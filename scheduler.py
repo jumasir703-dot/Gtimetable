@@ -74,6 +74,7 @@ def generate_timetable(stream_ids=None, overwrite=False):
     """
     settings = db.get_generation_settings()
     avoid_same_day = settings.get("avoid_same_day_repeat", "1") == "1"
+    vary_period = settings.get("vary_period_slot", "1") == "1"
 
     if stream_ids:
         streams = [db.fetch_one("SELECT * FROM streams WHERE id=?", (sid,)) for sid in stream_ids]
@@ -120,6 +121,7 @@ def generate_timetable(stream_ids=None, overwrite=False):
 
         teacher_load = defaultdict(int)
         subject_days_used = defaultdict(set)
+        subject_periods_used = defaultdict(set)
         stream_report = {"stream": stream["name"], "scheduled": 0, "skipped": []}
 
         for subject in subjects:
@@ -148,19 +150,26 @@ def generate_timetable(stream_ids=None, overwrite=False):
                         f"double lesson(s) placed (no free adjacent slot/teacher)"
                     )
 
+            # Progressive fallback: try with both preferences on first (spread
+            # across days AND across period-slots), then relax "vary period"
+            # first since it's the softer preference, then relax "avoid same
+            # day" too as a last resort so we still fill the week if it's tight.
             remaining = needed - placed
-            if remaining > 0:
-                singles = _place_subject(
+            fallback_levels = [
+                (avoid_same_day, vary_period),
+                (avoid_same_day, False),
+                (False, False),
+            ]
+            for level_avoid_same_day, level_vary_period in fallback_levels:
+                if remaining <= 0:
+                    break
+                got = _place_subject(
                     subject, teachers, remaining, available, not_after, teacher_busy, teacher_load,
-                    subject_days_used, stream_id, avoid_same_day=avoid_same_day,
+                    subject_days_used, subject_periods_used, stream_id,
+                    avoid_same_day=level_avoid_same_day, vary_period=level_vary_period,
                 )
-                placed += singles
-                if singles < remaining:
-                    more = _place_subject(
-                        subject, teachers, remaining - singles, available, not_after, teacher_busy,
-                        teacher_load, subject_days_used, stream_id, avoid_same_day=False,
-                    )
-                    placed += more
+                placed += got
+                remaining -= got
 
             stream_report["scheduled"] += placed
             if placed < needed:
@@ -174,7 +183,7 @@ def generate_timetable(stream_ids=None, overwrite=False):
 
 
 def _place_subject(subject, teachers, needed, available, not_after, teacher_busy, teacher_load,
-                    subject_days_used, stream_id, avoid_same_day):
+                    subject_days_used, subject_periods_used, stream_id, avoid_same_day, vary_period):
     """Place up to `needed` single periods for a subject directly against the
     real school-wide `available` list (mutated in place as slots get used —
     there is only ever one such list per stream, so removals here are always
@@ -186,6 +195,8 @@ def _place_subject(subject, teachers, needed, available, not_after, teacher_busy
         if not_after is not None and p["period_number"] > not_after:
             continue
         if avoid_same_day and p["day"] in subject_days_used[subject["id"]]:
+            continue
+        if vary_period and p["period_number"] in subject_periods_used[subject["id"]]:
             continue
 
         chosen_teacher = None
@@ -204,6 +215,7 @@ def _place_subject(subject, teachers, needed, available, not_after, teacher_busy
         teacher_busy.add((chosen_teacher, p["id"]))
         teacher_load[chosen_teacher] += 1
         subject_days_used[subject["id"]].add(p["day"])
+        subject_periods_used[subject["id"]].add(p["period_number"])
         available.remove(p)
         placed += 1
 
