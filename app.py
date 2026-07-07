@@ -363,12 +363,13 @@ def builder_page():
     )
     stream_id = request.args.get("stream_id", type=int) or (streams[0]["id"] if streams else None)
 
-    periods = db.fetch_all("SELECT DISTINCT period_number, start_time, end_time FROM periods ORDER BY period_number")
+    periods = db.fetch_all("SELECT DISTINCT period_number, start_time, end_time FROM periods WHERE is_break=0 ORDER BY period_number")
     days = db.DAYS
+    display_rows = _rows_with_breaks(periods)
 
     entries = {}
     if stream_id:
-        rows = db.fetch_all(
+        entry_rows = db.fetch_all(
             """SELECT te.id, sub.name as subject_name, t.name as teacher_name,
                       rm.name as room_name, p.day, p.period_number
                FROM timetable_entries te
@@ -379,12 +380,12 @@ def builder_page():
                WHERE te.stream_id = ?""",
             (stream_id,),
         )
-        for r in rows:
+        for r in entry_rows:
             entries[(r["day"], r["period_number"])] = r
 
     return render_template(
         "builder.html", streams=streams, stream_id=stream_id,
-        periods=periods, days=days, entries=entries,
+        rows=display_rows, days=days, entries=entries,
     )
 
 
@@ -508,10 +509,37 @@ def api_clear_cell():
 # --------------------------------------------------------------------------
 # View / Export
 # --------------------------------------------------------------------------
+def _rows_with_breaks(periods):
+    """Interleave lesson periods with break marker rows, in day order.
+    `periods` is a list of period rows (period_number, start_time, end_time).
+    Returns a list of dicts, each either:
+      {"type": "lesson", "period_number": n, "start_time": s, "end_time": e}
+      {"type": "break", "label": lbl, "start_time": s, "end_time": e}
+    """
+    break_by_after = {b["after_period"]: b for b in db.get_break_rows()}
+    rows = []
+    for p in periods:
+        rows.append({
+            "type": "lesson",
+            "period_number": p["period_number"],
+            "start_time": p["start_time"],
+            "end_time": p["end_time"],
+        })
+        b = break_by_after.get(p["period_number"])
+        if b:
+            rows.append({
+                "type": "break",
+                "label": b["label"],
+                "start_time": b["start_time"],
+                "end_time": b["end_time"],
+            })
+    return rows
+
+
 def _grid_data(mode, target):
     days = db.DAYS
-    periods = db.fetch_all("SELECT DISTINCT period_number, start_time, end_time FROM periods ORDER BY period_number")
-    period_numbers = [(p["period_number"], p["start_time"], p["end_time"]) for p in periods]
+    periods = db.fetch_all("SELECT DISTINCT period_number, start_time, end_time FROM periods WHERE is_break=0 ORDER BY period_number")
+    display_rows = _rows_with_breaks(periods)
 
     if mode == "stream":
         stream = db.fetch_one("SELECT * FROM streams WHERE id=?", (target,))
@@ -548,7 +576,7 @@ def _grid_data(mode, target):
         cells = {(r["day"], r["period_number"]): f"{r['subject_name']} - {r['stream_name']} ({r['room_name'] or '-'})" for r in rows}
         title = f"Timetable for {teacher['name']}"
 
-    return title, days, period_numbers, cells
+    return title, days, display_rows, cells
 
 
 @app.route("/view")
@@ -578,13 +606,17 @@ def export_csv():
     data = _grid_data(mode, target)
     if not data:
         return "Nothing to export", 400
-    title, days, period_numbers, cells = data
+    title, days, display_rows, cells = data
 
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["Period", "Time"] + days)
-    for pnum, s, e in period_numbers:
-        row = [f"P{pnum}", f"{s}-{e}"] + [cells.get((d, pnum), "") for d in days]
+    for r in display_rows:
+        if r["type"] == "break":
+            row = [r["label"], f"{r['start_time']}-{r['end_time']}"] + [""] * len(days)
+        else:
+            pnum = r["period_number"]
+            row = [f"P{pnum}", f"{r['start_time']}-{r['end_time']}"] + [cells.get((d, pnum), "") for d in days]
         writer.writerow(row)
 
     return Response(
