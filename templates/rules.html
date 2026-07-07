@@ -16,6 +16,14 @@
       (falls back to allowing it only if there's no other way to fit all periods in)
     </label>
     <br><br>
+    <label style="font-weight:normal;">
+      <input type="checkbox" name="vary_period_slot"
+             {% if settings.vary_period_slot == '1' %}checked{% endif %}>
+      Spread each subject across different periods during the week
+      (avoid it always landing in the same time slot every day — falls back
+      to repeating a slot only if there's no other way to fit everything in)
+    </label>
+    <br><br>
     <button type="submit">Save Rules</button>
   </form>
 </div>
