@@ -59,10 +59,24 @@
   </main>
 </div>
 <script>
+  // The PWA service worker is only useful for the web-hosted version — it
+  // caches pages and falls back to /offline when a real network fetch()
+  // fails. In the offline desktop build (run_desktop.py sets
+  // `desktop_mode`), that fetch() is to our own local server, but
+  // Windows/Chrome will still refuse the request while it thinks there's
+  // no network adapter up, which made the app wrongly show /offline
+  // whenever wifi was off. So: never register it in desktop mode, and
+  // clean up any copy a previous run may have already installed.
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}");
-    });
+    {% if desktop_mode %}
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((reg) => reg.unregister());
+      });
+    {% else %}
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}");
+      });
+    {% endif %}
   }
 
   // Single consolidated menu: click to open, click outside or pick a link to close.
