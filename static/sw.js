@@ -2,7 +2,7 @@
 // pages open without using data. Bump CACHE_NAME whenever style.css or
 // this file changes, so devices pick up the new version instead of an
 // old cached copy.
-const CACHE_NAME = "timetable-cache-v2";
+const CACHE_NAME = "timetable-cache-v3";
 
 const APP_SHELL = [
   "/static/style.css",
@@ -35,6 +35,15 @@ self.addEventListener("activate", (event) => {
 // - Only GET requests are cached. POST (adding/deleting/saving data) always
 //   goes straight to the network, since that's the only place it can be
 //   saved — no offline editing.
+// - File downloads (CSV/PDF export): left completely alone, no
+//   event.respondWith() at all. When this app is installed as a
+//   standalone/desktop-style PWA, a service worker handing back its own
+//   Response for a download link stops Chrome from recognizing
+//   "Content-Disposition: attachment" and opening the normal save-file
+//   flow -- the click just does nothing. Returning early here lets the
+//   browser handle those requests exactly like it would with no service
+//   worker in the picture at all, so downloads work the same as in a
+//   regular browser tab.
 // - Page navigations: try the network first (to always get fresh timetable
 //   data when there's a connection); if that fails, fall back to whatever
 //   copy of that page is in the cache, or the offline page as a last resort.
@@ -44,6 +53,10 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
+
+  const isDownload = url.pathname === "/export.csv" || url.pathname === "/export.pdf";
+  if (isDownload) return;
+
   const isStaticAsset = url.pathname.startsWith("/static/");
 
   if (isStaticAsset) {
