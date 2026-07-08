@@ -31,6 +31,8 @@
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 5l5 5 5-5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
       <div class="menu-panel" id="menu-panel">
+        <a href="{{ url_for('guide_page') }}" class="{{ 'active' if request.endpoint=='guide_page' else '' }}">Quick-Start Guide</a>
+        <a href="{{ url_for('onboarding.welcome') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('onboarding.') else '' }}">Setup Wizard</a>
         <a href="{{ url_for('settings_page') }}" class="{{ 'active' if request.endpoint=='settings_page' else '' }}">School Settings</a>
         <a href="{{ url_for('grades_page') }}" class="{{ 'active' if request.endpoint=='grades_page' else '' }}">Grades &amp; Streams</a>
         <a href="{{ url_for('subjects_page') }}" class="{{ 'active' if request.endpoint=='subjects_page' else '' }}">Subjects</a>
