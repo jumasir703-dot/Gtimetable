@@ -25,9 +25,11 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 import database as db
 import scheduler
+from onboarding import onboarding_bp
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+app.register_blueprint(onboarding_bp)
 
 with app.app_context():
     db.init_db()
@@ -40,6 +42,23 @@ def inject_school():
     this is what lets a school's own name appear in the header, browser
     tab title, and PWA-install title on every single page."""
     return {"school": db.get_school_settings()}
+
+
+# Endpoints reachable even before setup is finished: the wizard itself,
+# static files (css/js/icons), and the offline fallback page.
+_ONBOARDING_EXEMPT_PREFIXES = ("onboarding.", "static")
+_ONBOARDING_EXEMPT_ENDPOINTS = {"offline_page", "guide_page"}
+
+
+@app.before_request
+def _require_onboarding():
+    endpoint = request.endpoint or ""
+    if endpoint in _ONBOARDING_EXEMPT_ENDPOINTS:
+        return
+    if any(endpoint.startswith(p) for p in _ONBOARDING_EXEMPT_PREFIXES):
+        return
+    if not db.get_onboarding_completed():
+        return redirect(url_for("onboarding.welcome"))
 
 
 # --------------------------------------------------------------------------
@@ -55,6 +74,11 @@ def offline_page():
     """Shown by the service worker when there's no connection and the
     requested page hasn't been cached yet from an earlier visit."""
     return render_template("offline.html")
+
+
+@app.route("/guide")
+def guide_page():
+    return render_template("guide.html")
 
 
 # --------------------------------------------------------------------------
