@@ -2,13 +2,14 @@
 // pages open without using data. Bump CACHE_NAME whenever style.css or
 // this file changes, so devices pick up the new version instead of an
 // old cached copy.
-const CACHE_NAME = "timetable-cache-v1";
+const CACHE_NAME = "timetable-cache-v2";
 
 const APP_SHELL = [
   "/static/style.css",
   "/static/manifest.json",
   "/static/icons/icon-192.png",
   "/static/icons/icon-512.png",
+  "/guide",
   "/offline",
 ];
 
