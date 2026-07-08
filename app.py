@@ -185,10 +185,12 @@ def subjects_page():
     pathways = db.fetch_all("SELECT * FROM pathways ORDER BY name")
 
     query = """SELECT sub.id, sub.name, sub.category, sub.periods_per_week,
+                      sub.group_id, sg.name as group_name,
                       g.name as grade_name, p.name as pathway_name
                FROM subjects sub
                JOIN grades g ON sub.grade_id = g.id
-               LEFT JOIN pathways p ON sub.pathway_id = p.id"""
+               LEFT JOIN pathways p ON sub.pathway_id = p.id
+               LEFT JOIN subject_groups sg ON sub.group_id = sg.id"""
     params = ()
     if grade_filter and grade_filter != "(all)":
         query += " WHERE g.name = ?"
@@ -196,9 +198,11 @@ def subjects_page():
     query += " ORDER BY g.id, sub.category, sub.name"
     subjects = db.fetch_all(query, params)
 
+    groups = db.list_subject_groups()
+
     return render_template(
         "subjects.html", grades=grades, pathways=pathways, subjects=subjects,
-        grade_filter=grade_filter,
+        grade_filter=grade_filter, groups=groups,
     )
 
 
@@ -247,6 +251,54 @@ def update_subject_periods(subject_id):
 def delete_subject(subject_id):
     grade_filter = request.form.get("grade_filter", "(all)")
     db.execute("DELETE FROM subjects WHERE id=?", (subject_id,))
+    return redirect(url_for("subjects_page", grade=grade_filter))
+
+
+@app.route("/subjects/<int:subject_id>/group", methods=["POST"])
+def set_subject_group(subject_id):
+    """Assign (or clear) which optional-subject group a subject belongs to,
+    e.g. putting Business Studies, Computer Studies, Home Science, and
+    Agriculture all in one "Electives" group so they're scheduled and
+    displayed together as a single "pick one" slot."""
+    grade_filter = request.form.get("grade_filter", "(all)")
+    group_id = request.form.get("group_id", type=int)
+    db.set_subject_group(subject_id, group_id)
+    return redirect(url_for("subjects_page", grade=grade_filter))
+
+
+@app.route("/subject_groups/add", methods=["POST"])
+def add_subject_group():
+    name = request.form.get("name", "").strip()
+    grade_name = request.form.get("grade", "")
+    pathway_name = request.form.get("pathway", "")
+    periods_per_week = request.form.get("periods_per_week", type=int) or 5
+    grade_filter = request.form.get("grade_filter", "(all)")
+
+    if not name or not grade_name:
+        flash("Enter a group name and choose a grade.", "error")
+        return redirect(url_for("subjects_page", grade=grade_filter))
+
+    grow = db.fetch_one("SELECT id, curriculum FROM grades WHERE name=?", (grade_name,))
+    if not grow:
+        return redirect(url_for("subjects_page", grade=grade_filter))
+    pathway_id = None
+    if grow["curriculum"] == "CBC" and pathway_name and pathway_name != "(none)":
+        prow = db.fetch_one("SELECT id FROM pathways WHERE name=?", (pathway_name,))
+        pathway_id = prow["id"] if prow else None
+
+    try:
+        db.create_subject_group(name, grow["id"], pathway_id, periods_per_week)
+        flash(f'Created optional-subject group "{name}". Now assign subjects to it below.', "success")
+    except Exception as e:
+        flash(f"Could not create group: {e}", "error")
+    return redirect(url_for("subjects_page", grade=grade_filter))
+
+
+@app.route("/subject_groups/<int:group_id>/delete", methods=["POST"])
+def delete_subject_group(group_id):
+    grade_filter = request.form.get("grade_filter", "(all)")
+    db.delete_subject_group(group_id)
+    flash("Group deleted — its subjects are back to being scheduled individually.", "success")
     return redirect(url_for("subjects_page", grade=grade_filter))
 
 
@@ -485,18 +537,19 @@ def builder_page():
     entries = {}
     if stream_id:
         entry_rows = db.fetch_all(
-            """SELECT te.id, sub.name as subject_name, t.name as teacher_name,
-                      rm.name as room_name, p.day, p.period_number
+            """SELECT te.id, sub.name as subject_name, sub.group_id, sg.name as group_name,
+                      t.name as teacher_name, rm.name as room_name, p.day, p.period_number
                FROM timetable_entries te
                JOIN periods p ON te.period_id = p.id
                JOIN subjects sub ON te.subject_id = sub.id
+               LEFT JOIN subject_groups sg ON sub.group_id = sg.id
                LEFT JOIN teachers t ON te.teacher_id = t.id
                LEFT JOIN rooms rm ON te.room_id = rm.id
                WHERE te.stream_id = ?""",
             (stream_id,),
         )
         for r in entry_rows:
-            entries[(r["day"], r["period_number"])] = r
+            entries.setdefault((r["day"], r["period_number"]), []).append(r)
 
     return render_template(
         "builder.html", streams=streams, stream_id=stream_id,
@@ -529,7 +582,10 @@ def generate_timetable():
 
 @app.route("/api/cell")
 def api_get_cell():
-    """Returns subject/teacher/room options + any existing entry for a cell."""
+    """Returns subject/teacher/room options + any existing entry/entries for
+    a cell. A cell can hold more than one entry when it's an optional
+    subject group (e.g. Business Studies / Computer Studies / Home Science /
+    Agriculture taught in parallel) — `existing` is a list."""
     stream_id = request.args.get("stream_id", type=int)
     day = request.args.get("day")
     period_number = request.args.get("period_number", type=int)
@@ -540,12 +596,13 @@ def api_get_cell():
         return jsonify({"error": "not found"}), 404
 
     subjects = db.fetch_all(
-        "SELECT id, name FROM subjects WHERE grade_id=? AND (pathway_id IS NULL OR pathway_id=?) ORDER BY name",
+        "SELECT id, name, group_id FROM subjects "
+        "WHERE grade_id=? AND (pathway_id IS NULL OR pathway_id=?) ORDER BY name",
         (stream["grade_id"], stream["pathway_id"]),
     )
     teachers = db.fetch_all("SELECT id, name FROM teachers ORDER BY name")
     rooms = db.fetch_all("SELECT id, name FROM rooms ORDER BY name")
-    existing = db.fetch_one(
+    existing = db.fetch_all(
         "SELECT * FROM timetable_entries WHERE stream_id=? AND period_id=?",
         (stream_id, period["id"]),
     )
@@ -554,7 +611,7 @@ def api_get_cell():
         "subjects": [dict(s) for s in subjects],
         "teachers": [dict(t) for t in teachers],
         "rooms": [dict(r) for r in rooms],
-        "existing": dict(existing) if existing else None,
+        "existing": [dict(e) for e in existing],
         "period_id": period["id"],
         "period_label": f"{day} — Period {period_number} ({period['start_time']}-{period['end_time']})",
     })
@@ -562,6 +619,10 @@ def api_get_cell():
 
 @app.route("/api/cell/save", methods=["POST"])
 def api_save_cell():
+    """Save a single, ungrouped subject into a slot. Any existing entry/entries
+    already occupying that stream+period (whether a lone subject or a whole
+    optional-subject group) are replaced, since a slot can only be one thing
+    at a time from the builder's point of view."""
     data = request.get_json()
     stream_id = data.get("stream_id")
     period_id = data.get("period_id")
@@ -592,19 +653,68 @@ def api_save_cell():
     if conflicts and not force:
         return jsonify({"conflicts": conflicts})
 
-    existing = db.fetch_one(
-        "SELECT * FROM timetable_entries WHERE stream_id=? AND period_id=?", (stream_id, period_id)
+    db.execute("DELETE FROM timetable_entries WHERE stream_id=? AND period_id=?", (stream_id, period_id))
+    db.execute(
+        "INSERT INTO timetable_entries (stream_id, subject_id, teacher_id, room_id, period_id) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (stream_id, subject_id, teacher_id, room_id, period_id),
     )
-    if existing:
-        db.execute(
-            "UPDATE timetable_entries SET subject_id=?, teacher_id=?, room_id=? WHERE id=?",
-            (subject_id, teacher_id, room_id, existing["id"]),
-        )
-    else:
+    return jsonify({"ok": True})
+
+
+@app.route("/api/cell/save_group", methods=["POST"])
+def api_save_group_cell():
+    """Save a whole optional-subject group into a slot: one timetable_entries
+    row per member subject, all at the same stream+period, each with its own
+    teacher/room — e.g. Business Studies with Mr Otieno in Room 2, Computer
+    Studies with Mrs Wanjiru in the Computer Lab, at the same time, so
+    students can be split across them."""
+    data = request.get_json()
+    stream_id = data.get("stream_id")
+    period_id = data.get("period_id")
+    rows = data.get("entries") or []  # [{subject_id, teacher_id, room_id}, ...]
+    force = data.get("force", False)
+
+    if not rows or not any(r.get("subject_id") for r in rows):
+        return jsonify({"error": "Choose at least one subject for this group."}), 400
+
+    conflicts = []
+    for row in rows:
+        teacher_id = row.get("teacher_id") or None
+        room_id = row.get("room_id") or None
+        if teacher_id:
+            clash = db.fetch_one(
+                "SELECT te.id FROM timetable_entries te WHERE te.teacher_id=? AND te.period_id=? AND te.stream_id != ?",
+                (teacher_id, period_id, stream_id),
+            )
+            if clash:
+                conflicts.append(f"A teacher for one of these subjects is already teaching another stream in this period.")
+        if room_id:
+            clash = db.fetch_one(
+                "SELECT te.id FROM timetable_entries te WHERE te.room_id=? AND te.period_id=? AND te.stream_id != ?",
+                (room_id, period_id, stream_id),
+            )
+            if clash:
+                conflicts.append("A room for one of these subjects is already booked by another stream in this period.")
+
+    # Two member subjects can't share the same teacher at the same time.
+    teacher_ids_used = [r.get("teacher_id") for r in rows if r.get("teacher_id")]
+    if len(teacher_ids_used) != len(set(teacher_ids_used)):
+        conflicts.append("Two subjects in this group can't share the same teacher at the same time.")
+
+    conflicts = list(dict.fromkeys(conflicts))  # de-duplicate, keep order
+    if conflicts and not force:
+        return jsonify({"conflicts": conflicts})
+
+    db.execute("DELETE FROM timetable_entries WHERE stream_id=? AND period_id=?", (stream_id, period_id))
+    for row in rows:
+        subject_id = row.get("subject_id")
+        if not subject_id:
+            continue
         db.execute(
             "INSERT INTO timetable_entries (stream_id, subject_id, teacher_id, room_id, period_id) "
             "VALUES (?, ?, ?, ?, ?)",
-            (stream_id, subject_id, teacher_id, room_id, period_id),
+            (stream_id, subject_id, row.get("teacher_id") or None, row.get("room_id") or None, period_id),
         )
     return jsonify({"ok": True})
 
@@ -625,7 +735,13 @@ def api_clear_cell():
 def api_move_cell():
     """Move a lesson from one period to another for the same stream (drag
     and drop on the Builder grid). If the destination slot already has a
-    lesson, the two swap places instead of one overwriting the other."""
+    lesson, the two swap places instead of one overwriting the other.
+
+    Optional-subject group slots (which hold more than one entry) can't be
+    dragged — there's no single "lesson" to move, and swapping a whole group
+    into a slot occupied by something else is ambiguous. Those have to be
+    edited/cleared from the cell editor instead.
+    """
     data = request.get_json()
     stream_id = data.get("stream_id")
     from_period_id = data.get("from_period_id")
@@ -637,17 +753,23 @@ def api_move_cell():
     if from_period_id == to_period_id:
         return jsonify({"ok": True})  # dropped back on itself, nothing to do
 
-    entry_from = db.fetch_one(
+    from_rows = db.fetch_all(
         "SELECT * FROM timetable_entries WHERE stream_id=? AND period_id=?",
         (stream_id, from_period_id),
     )
-    if not entry_from:
+    if not from_rows:
         return jsonify({"error": "That slot is empty — nothing to move."}), 400
+    if len(from_rows) > 1:
+        return jsonify({"error": "That slot has an optional-subject group in it — edit or clear it from the cell editor instead of dragging."}), 400
+    entry_from = from_rows[0]
 
-    entry_to = db.fetch_one(
+    to_rows = db.fetch_all(
         "SELECT * FROM timetable_entries WHERE stream_id=? AND period_id=?",
         (stream_id, to_period_id),
     )
+    if len(to_rows) > 1:
+        return jsonify({"error": "The destination slot has an optional-subject group in it — edit or clear it from the cell editor instead of dragging."}), 400
+    entry_to = to_rows[0] if to_rows else None
 
     conflicts = []
 
@@ -759,10 +881,15 @@ def _grid_data(mode, target):
                JOIN subjects sub ON te.subject_id = sub.id
                LEFT JOIN teachers t ON te.teacher_id = t.id
                LEFT JOIN rooms rm ON te.room_id = rm.id
-               WHERE te.stream_id = ?""",
+               WHERE te.stream_id = ?
+               ORDER BY sub.name""",
             (stream["id"],),
         )
-        cells = {(r["day"], r["period_number"]): f"{r['subject_name']} ({r['teacher_name'] or '-'}, {r['room_name'] or '-'})" for r in rows}
+        cells = {}
+        for r in rows:
+            key = (r["day"], r["period_number"])
+            piece = f"{r['subject_name']} ({r['teacher_name'] or '-'}, {r['room_name'] or '-'})"
+            cells[key] = f"{cells[key]} / {piece}" if key in cells else piece
         title = f"{db.get_school_settings()['name']} — Timetable for {stream['name']}"
     else:
         teacher = db.fetch_one("SELECT * FROM teachers WHERE id=?", (target,))
@@ -776,10 +903,15 @@ def _grid_data(mode, target):
                JOIN subjects sub ON te.subject_id = sub.id
                JOIN streams st ON te.stream_id = st.id
                LEFT JOIN rooms rm ON te.room_id = rm.id
-               WHERE te.teacher_id = ?""",
+               WHERE te.teacher_id = ?
+               ORDER BY sub.name""",
             (teacher["id"],),
         )
-        cells = {(r["day"], r["period_number"]): f"{r['subject_name']} - {r['stream_name']} ({r['room_name'] or '-'})" for r in rows}
+        cells = {}
+        for r in rows:
+            key = (r["day"], r["period_number"])
+            piece = f"{r['subject_name']} - {r['stream_name']} ({r['room_name'] or '-'})"
+            cells[key] = f"{cells[key]} / {piece}" if key in cells else piece
         title = f"{db.get_school_settings()['name']} — Timetable for {teacher['name']}"
 
     return title, days, display_rows, cells
