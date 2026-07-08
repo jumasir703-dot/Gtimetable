@@ -21,6 +21,7 @@ import os
 import sys
 import threading
 import time
+import traceback
 import webbrowser
 
 # --- 1 & 2: decide where the database lives, before app/database import it ---
@@ -34,6 +35,23 @@ else:
 os.makedirs(DATA_DIR, exist_ok=True)
 os.environ.setdefault("DB_PATH", os.path.join(DATA_DIR, "timetable.db"))
 os.environ.pop("DATABASE_URL", None)  # never talk to Postgres offline
+
+
+def _log(message):
+    """print() can crash a windowed (no-console) build on Windows, since
+    sys.stdout is None in that mode. This writes to both the console when
+    one exists, and always to a log file, so problems are never invisible."""
+    if sys.stdout is not None:
+        try:
+            print(message)
+        except Exception:
+            pass
+    try:
+        with open(os.path.join(DATA_DIR, "app.log"), "a", encoding="utf-8") as f:
+            f.write(message + "\n")
+    except Exception:
+        pass
+
 
 # Now it's safe to import the app (this is what actually creates the DB).
 from app import app  # noqa: E402
@@ -61,7 +79,10 @@ def _open_browser():
 
 if __name__ == "__main__":
     threading.Thread(target=_open_browser, daemon=True).start()
-    print(f"Testy Timetables is running at http://{HOST}:{PORT}/")
-    print(f"Your data is stored at: {os.environ['DB_PATH']}")
-    print("Close this window to stop the app.")
-    app.run(host=HOST, port=PORT, debug=False, use_reloader=False, threaded=True)
+    _log(f"Testy Timetables is running at http://{HOST}:{PORT}/")
+    _log(f"Your data is stored at: {os.environ['DB_PATH']}")
+    try:
+        app.run(host=HOST, port=PORT, debug=False, use_reloader=False, threaded=True)
+    except Exception:
+        _log("CRASHED:\n" + traceback.format_exc())
+        raise
