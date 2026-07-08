@@ -144,6 +144,15 @@ CREATE TABLE IF NOT EXISTS streams (
     UNIQUE(grade_id, pathway_id, name)
 );
 
+CREATE TABLE IF NOT EXISTS subject_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    grade_id INTEGER NOT NULL REFERENCES grades(id) ON DELETE CASCADE,
+    pathway_id INTEGER REFERENCES pathways(id) ON DELETE SET NULL,
+    periods_per_week INTEGER DEFAULT 5,
+    UNIQUE(name, grade_id, pathway_id)
+);
+
 CREATE TABLE IF NOT EXISTS subjects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -152,6 +161,7 @@ CREATE TABLE IF NOT EXISTS subjects (
     grade_id INTEGER REFERENCES grades(id) ON DELETE CASCADE,
     pathway_id INTEGER REFERENCES pathways(id) ON DELETE SET NULL,
     periods_per_week INTEGER DEFAULT 5,
+    group_id INTEGER REFERENCES subject_groups(id) ON DELETE SET NULL,
     UNIQUE(name, grade_id, pathway_id)
 );
 
@@ -192,7 +202,7 @@ CREATE TABLE IF NOT EXISTS timetable_entries (
     teacher_id INTEGER REFERENCES teachers(id) ON DELETE SET NULL,
     room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL,
     period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
-    UNIQUE(stream_id, period_id)
+    UNIQUE(stream_id, period_id, subject_id)
 );
 
 CREATE TABLE IF NOT EXISTS generation_settings (
@@ -249,6 +259,15 @@ CREATE TABLE IF NOT EXISTS streams (
     UNIQUE(grade_id, pathway_id, name)
 );
 
+CREATE TABLE IF NOT EXISTS subject_groups (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    grade_id INTEGER NOT NULL REFERENCES grades(id) ON DELETE CASCADE,
+    pathway_id INTEGER REFERENCES pathways(id) ON DELETE SET NULL,
+    periods_per_week INTEGER DEFAULT 5,
+    UNIQUE(name, grade_id, pathway_id)
+);
+
 CREATE TABLE IF NOT EXISTS subjects (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
@@ -257,6 +276,7 @@ CREATE TABLE IF NOT EXISTS subjects (
     grade_id INTEGER REFERENCES grades(id) ON DELETE CASCADE,
     pathway_id INTEGER REFERENCES pathways(id) ON DELETE SET NULL,
     periods_per_week INTEGER DEFAULT 5,
+    group_id INTEGER REFERENCES subject_groups(id) ON DELETE SET NULL,
     UNIQUE(name, grade_id, pathway_id)
 );
 
@@ -297,7 +317,7 @@ CREATE TABLE IF NOT EXISTS timetable_entries (
     teacher_id INTEGER REFERENCES teachers(id) ON DELETE SET NULL,
     room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL,
     period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
-    UNIQUE(stream_id, period_id)
+    UNIQUE(stream_id, period_id, subject_id)
 );
 
 CREATE TABLE IF NOT EXISTS generation_settings (
@@ -373,11 +393,20 @@ def _migrate_schema(conn):
         cur.execute("ALTER TABLE subjects ADD COLUMN IF NOT EXISTS periods_per_week INTEGER DEFAULT 5")
         cur.execute("ALTER TABLE teachers ADD COLUMN IF NOT EXISTS rank INTEGER")
         cur.execute("ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE")
+        cur.execute(
+            "ALTER TABLE subjects ADD COLUMN IF NOT EXISTS group_id INTEGER "
+            "REFERENCES subject_groups(id) ON DELETE SET NULL"
+        )
     else:
         cur.execute("PRAGMA table_info(subjects)")
         cols = {row["name"] for row in cur.fetchall()}
         if "periods_per_week" not in cols:
             cur.execute("ALTER TABLE subjects ADD COLUMN periods_per_week INTEGER DEFAULT 5")
+        if "group_id" not in cols:
+            cur.execute(
+                "ALTER TABLE subjects ADD COLUMN group_id INTEGER "
+                "REFERENCES subject_groups(id) ON DELETE SET NULL"
+            )
 
         cur.execute("PRAGMA table_info(teachers)")
         teacher_cols = {row["name"] for row in cur.fetchall()}
@@ -388,6 +417,9 @@ def _migrate_schema(conn):
         settings_cols = {row["name"] for row in cur.fetchall()}
         if "onboarding_completed" not in settings_cols:
             cur.execute("ALTER TABLE school_settings ADD COLUMN onboarding_completed BOOLEAN DEFAULT 0")
+
+    _migrate_relax_timetable_entries_unique(conn, cur)
+
 
     # Seed day_structure/breaks defaults for databases that already existed
     # before this feature, matching the values their periods were originally
@@ -432,6 +464,72 @@ def _migrate_schema(conn):
         cur.execute(_adapt("UPDATE school_settings SET onboarding_completed = ? WHERE id=1"), (True,))
 
     conn.commit()
+
+
+def _migrate_relax_timetable_entries_unique(conn, cur):
+    """One-time migration: relax the UNIQUE constraint on timetable_entries
+    from (stream_id, period_id) to (stream_id, period_id, subject_id).
+
+    This is what allows "optional subject groups" (e.g. Business Studies /
+    Computer Studies / Home Science / Agriculture taught in parallel, with
+    students split across them) to occupy the same stream+period slot with
+    more than one timetable_entries row — one per subject in the group.
+
+    Safe to run on every startup: it only touches the table if the old,
+    narrower constraint is still in place; once migrated, it's a no-op.
+    """
+    if USE_POSTGRES:
+        cur.execute(
+            """SELECT con.conname,
+                      array_agg(a.attname) AS cols
+               FROM pg_constraint con
+               JOIN pg_class rel ON rel.oid = con.conrelid
+               JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = ANY(con.conkey)
+               WHERE rel.relname = 'timetable_entries' AND con.contype = 'u'
+               GROUP BY con.conname"""
+        )
+        for row in cur.fetchall():
+            cols = set(row["cols"])
+            if cols == {"stream_id", "period_id"}:
+                cur.execute(f'ALTER TABLE timetable_entries DROP CONSTRAINT "{row["conname"]}"')
+                cur.execute(
+                    "ALTER TABLE timetable_entries ADD CONSTRAINT "
+                    "timetable_entries_stream_period_subject_key "
+                    "UNIQUE (stream_id, period_id, subject_id)"
+                )
+        conn.commit()
+    else:
+        cur.execute("PRAGMA index_list(timetable_entries)")
+        needs_rebuild = False
+        for idx in cur.fetchall():
+            if not idx["unique"]:
+                continue
+            cur.execute(f"PRAGMA index_info({idx['name']})")
+            idx_cols = {r["name"] for r in cur.fetchall()}
+            if idx_cols == {"stream_id", "period_id"}:
+                needs_rebuild = True
+                break
+        if needs_rebuild:
+            cur.execute("ALTER TABLE timetable_entries RENAME TO timetable_entries_old")
+            cur.execute(
+                """CREATE TABLE timetable_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    stream_id INTEGER NOT NULL REFERENCES streams(id) ON DELETE CASCADE,
+                    subject_id INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+                    teacher_id INTEGER REFERENCES teachers(id) ON DELETE SET NULL,
+                    room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL,
+                    period_id INTEGER NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+                    UNIQUE(stream_id, period_id, subject_id)
+                )"""
+            )
+            cur.execute(
+                "INSERT INTO timetable_entries "
+                "(id, stream_id, subject_id, teacher_id, room_id, period_id) "
+                "SELECT id, stream_id, subject_id, teacher_id, room_id, period_id "
+                "FROM timetable_entries_old"
+            )
+            cur.execute("DROP TABLE timetable_entries_old")
+        conn.commit()
 
 
 def _regenerate_periods(cur):
@@ -876,3 +974,67 @@ def add_subject_rule(subject_id, rule_type, value):
 
 def delete_subject_rule(rule_id):
     execute("DELETE FROM subject_rules WHERE id=?", (rule_id,))
+
+
+# --------------------------------------------------------------------------
+# Optional subject groups — e.g. Business Studies / Computer Studies /
+# Home Science / Agriculture taught at the same time, with each student
+# picking exactly one. The group has one common name (shown on the
+# timetable in place of a single subject) and one periods_per_week value,
+# since all its member subjects occupy the same slot(s) each week.
+# --------------------------------------------------------------------------
+def list_subject_groups(grade_id=None):
+    """All optional-subject groups, with grade/pathway names and a count of
+    member subjects, for display on the Subjects page."""
+    query = (
+        "SELECT sg.id, sg.name, sg.periods_per_week, sg.grade_id, sg.pathway_id, "
+        "g.name AS grade_name, p.name AS pathway_name, "
+        "(SELECT COUNT(*) FROM subjects s WHERE s.group_id = sg.id) AS member_count "
+        "FROM subject_groups sg "
+        "JOIN grades g ON sg.grade_id = g.id "
+        "LEFT JOIN pathways p ON sg.pathway_id = p.id"
+    )
+    params = ()
+    if grade_id:
+        query += " WHERE sg.grade_id = ?"
+        params = (grade_id,)
+    query += " ORDER BY g.id, sg.name"
+    return fetch_all(query, params)
+
+
+def get_subject_group(group_id):
+    return fetch_one("SELECT * FROM subject_groups WHERE id=?", (group_id,))
+
+
+def get_group_members(group_id):
+    """Every subject currently assigned to this optional-subject group."""
+    return fetch_all(
+        "SELECT * FROM subjects WHERE group_id=? ORDER BY name", (group_id,)
+    )
+
+
+def create_subject_group(name, grade_id, pathway_id, periods_per_week):
+    return execute(
+        "INSERT INTO subject_groups (name, grade_id, pathway_id, periods_per_week) "
+        "VALUES (?, ?, ?, ?)",
+        (name, grade_id, pathway_id, periods_per_week),
+    )
+
+
+def update_subject_group(group_id, name, periods_per_week):
+    execute(
+        "UPDATE subject_groups SET name=?, periods_per_week=? WHERE id=?",
+        (name, periods_per_week, group_id),
+    )
+
+
+def delete_subject_group(group_id):
+    """Deletes the group. Member subjects aren't deleted — their group_id
+    just reverts to NULL (ON DELETE SET NULL) and they go back to being
+    scheduled individually."""
+    execute("DELETE FROM subject_groups WHERE id=?", (group_id,))
+
+
+def set_subject_group(subject_id, group_id):
+    """Assign (or clear, with group_id=None) a subject's optional group."""
+    execute("UPDATE subjects SET group_id=? WHERE id=?", (group_id, subject_id))
