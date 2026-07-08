@@ -372,6 +372,7 @@ def _migrate_schema(conn):
     if USE_POSTGRES:
         cur.execute("ALTER TABLE subjects ADD COLUMN IF NOT EXISTS periods_per_week INTEGER DEFAULT 5")
         cur.execute("ALTER TABLE teachers ADD COLUMN IF NOT EXISTS rank INTEGER")
+        cur.execute("ALTER TABLE school_settings ADD COLUMN IF NOT EXISTS onboarding_completed BOOLEAN DEFAULT FALSE")
     else:
         cur.execute("PRAGMA table_info(subjects)")
         cols = {row["name"] for row in cur.fetchall()}
@@ -382,6 +383,11 @@ def _migrate_schema(conn):
         teacher_cols = {row["name"] for row in cur.fetchall()}
         if "rank" not in teacher_cols:
             cur.execute("ALTER TABLE teachers ADD COLUMN rank INTEGER")
+
+        cur.execute("PRAGMA table_info(school_settings)")
+        settings_cols = {row["name"] for row in cur.fetchall()}
+        if "onboarding_completed" not in settings_cols:
+            cur.execute("ALTER TABLE school_settings ADD COLUMN onboarding_completed BOOLEAN DEFAULT 0")
 
     # Seed day_structure/breaks defaults for databases that already existed
     # before this feature, matching the values their periods were originally
@@ -414,6 +420,17 @@ def _migrate_schema(conn):
             ),
             ("My School", "Senior School Timetable", "TT", ",".join(DEFAULT_ACTIVE_DAYS)),
         )
+
+    # If this database already has teachers in it, it existed before the
+    # onboarding wizard was added — don't force an already-set-up school
+    # through first-run setup. Only brand-new/empty databases see it.
+    cur.execute("SELECT COUNT(*) AS c FROM teachers")
+    has_teachers = cur.fetchone()["c"] > 0
+    cur.execute("SELECT onboarding_completed FROM school_settings WHERE id=1")
+    row = cur.fetchone()
+    if has_teachers and row is not None and not row["onboarding_completed"]:
+        cur.execute(_adapt("UPDATE school_settings SET onboarding_completed = ? WHERE id=1"), (True,))
+
     conn.commit()
 
 
@@ -536,6 +553,20 @@ def get_school_settings():
     settings = dict(row)
     settings["active_days"] = get_active_days()
     return settings
+
+
+def get_onboarding_completed():
+    row = fetch_one("SELECT onboarding_completed FROM school_settings WHERE id=1")
+    if not row:
+        return False
+    return bool(row["onboarding_completed"])
+
+
+def set_onboarding_completed(value):
+    execute(
+        "UPDATE school_settings SET onboarding_completed=? WHERE id=1",
+        (bool(value),),
+    )
 
 
 def set_school_settings(name, tagline, brand_mark, active_days_list):
