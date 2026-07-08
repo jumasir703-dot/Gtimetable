@@ -13,8 +13,11 @@ doesn't need to worry about when run normally with `flask run` / gunicorn:
 2. Forces DATABASE_URL to stay unset, so database.py always falls back
    to its local SQLite path — no Postgres, no network, fully offline.
 3. Starts the Flask dev server on localhost only (not 0.0.0.0) with
-   debug/reloader off (those don't play well with a frozen executable)
-   and opens the user's default browser to it automatically.
+   debug/reloader off (those don't play well with a frozen executable),
+   running in a background thread, and opens it in a native desktop
+   window via pywebview instead of a browser tab -- on Windows this uses
+   the Edge WebView2 engine that ships with Windows 10/11, so there's no
+   extra runtime to install.
 """
 
 import os
@@ -72,17 +75,36 @@ HOST = "127.0.0.1"
 PORT = 5000
 
 
-def _open_browser():
-    time.sleep(1.2)  # give the server a moment to bind the port
-    webbrowser.open(f"http://{HOST}:{PORT}/")
-
-
-if __name__ == "__main__":
-    threading.Thread(target=_open_browser, daemon=True).start()
-    _log(f"Testy Timetables is running at http://{HOST}:{PORT}/")
-    _log(f"Your data is stored at: {os.environ['DB_PATH']}")
+def _run_server():
     try:
         app.run(host=HOST, port=PORT, debug=False, use_reloader=False, threaded=True)
     except Exception:
         _log("CRASHED:\n" + traceback.format_exc())
-        raise
+
+
+if __name__ == "__main__":
+    _log(f"Testy Timetables starting at http://{HOST}:{PORT}/")
+    _log(f"Your data is stored at: {os.environ['DB_PATH']}")
+
+    server_thread = threading.Thread(target=_run_server, daemon=True)
+    server_thread.start()
+    time.sleep(1.2)  # give the server a moment to bind the port
+
+    try:
+        import webview
+
+        webview.create_window(
+            "Testy Timetables",
+            f"http://{HOST}:{PORT}/",
+            width=1200,
+            height=800,
+            min_size=(800, 600),
+        )
+        webview.start()  # blocks until the window is closed
+    except Exception:
+        # If pywebview can't load for any reason (missing WebView2
+        # runtime, unsupported platform, etc.) fall back to opening the
+        # user's normal browser instead, so the app is still usable.
+        _log("pywebview failed, falling back to browser:\n" + traceback.format_exc())
+        webbrowser.open(f"http://{HOST}:{PORT}/")
+        server_thread.join()
