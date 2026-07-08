@@ -38,6 +38,18 @@ os.environ.pop("DATABASE_URL", None)  # never talk to Postgres offline
 # Now it's safe to import the app (this is what actually creates the DB).
 from app import app  # noqa: E402
 
+
+@app.context_processor
+def _inject_desktop_mode():
+    # Tells base.html not to register the PWA service worker (and to
+    # unregister any copy a previous run already installed). That service
+    # worker is meant for the web-hosted version; in the desktop build its
+    # network fetch() gets blocked by Windows/Chrome whenever wifi is off
+    # -- even though it's only talking to our own local server -- which
+    # was making the app incorrectly show its "offline" page.
+    return {"desktop_mode": True}
+
+
 HOST = "127.0.0.1"
 PORT = 5000
 
